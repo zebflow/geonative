@@ -45,6 +45,7 @@ pub use feature::Feature;
 pub use geometry::{Coord, Geometry, GeometryType, LineString, Polygon};
 pub use schema::{FieldDef, GeomField, Schema};
 pub use value::{Value, ValueType};
+pub use wkb::bbox_from_bytes;
 
 /// Crate version, for diagnostic use.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

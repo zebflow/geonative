@@ -142,6 +142,69 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
     );
 }
 
+/// End-to-end **round-trip**: GDB → parquet (via our writer) → read the WKB
+/// column → `Geometry::from_wkb` → compare to the original `Geometry` we got
+/// from the GDB reader. Proves the encoder + decoder are exact inverses on
+/// real, complex geometry (MultiLineString with 9+ parts from FOI_LINE FID 1).
+#[test]
+fn wkb_decoder_round_trips_via_parquet() {
+    let Some(gdb_path) = fixture_path() else {
+        eprintln!("(skipped: set GEONATIVE_FIXTURE_GDB to enable)");
+        return;
+    };
+    let gdb = open_gdb(&gdb_path).expect("open .gdb");
+    let layer = gdb.layer("FOI_LINE").expect("FOI_LINE layer");
+    let schema = layer.schema().clone();
+
+    // Collect the original geometries from the GDB.
+    let originals: Vec<geonative_core::Geometry> = layer
+        .read()
+        .map(|f| f.unwrap().geometry.unwrap())
+        .collect();
+    assert_eq!(originals.len(), 75);
+
+    // Write to a parquet (no Hilbert sort, so order is preserved).
+    let tmpdir = tempfile::tempdir().unwrap();
+    let path = tmpdir.path().join("foi.parquet");
+    {
+        let file = std::fs::File::create(&path).unwrap();
+        let mut w = GeoParquetWriter::create(file, &schema, WriterOptions::default()).unwrap();
+        for f in layer.read() {
+            w.write(&f.unwrap()).unwrap();
+        }
+        w.close().unwrap();
+    }
+
+    // Read the WKB column back, decode each row, compare to the original.
+    let file = std::fs::File::open(&path).unwrap();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
+    let arrow_schema = builder.schema().clone();
+    let geom_idx = arrow_schema.index_of("SHAPE").unwrap();
+    let reader = builder.build().unwrap();
+
+    let mut decoded: Vec<geonative_core::Geometry> = Vec::with_capacity(75);
+    for batch in reader {
+        let batch = batch.unwrap();
+        let geom_col = batch
+            .column(geom_idx)
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap();
+        for i in 0..batch.num_rows() {
+            let wkb = geom_col.value(i);
+            let g = geonative_core::Geometry::from_wkb(wkb)
+                .unwrap_or_else(|e| panic!("decode row {i}: {e}"));
+            decoded.push(g);
+        }
+    }
+
+    assert_eq!(decoded.len(), originals.len());
+    for (i, (orig, back)) in originals.iter().zip(&decoded).enumerate() {
+        assert_eq!(orig, back, "round-trip mismatch at row {i}");
+    }
+    println!("OK: 75/75 geometries round-tripped GDB → WKB → parquet → WKB → Geometry");
+}
+
 /// Convert the same fixture twice — once without Hilbert sort, once with —
 /// then compare per-row-group bbox-x spread. Hilbert sort should drastically
 /// shrink the average spread (= better row-group pruning for spatial reads).
