@@ -14,6 +14,7 @@
 pub enum Value {
     Null,
     Bool(bool),
+    Int16(i16),
     Int32(i32),
     Int64(i64),
     Float32(f32),
@@ -33,6 +34,7 @@ pub enum Value {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueType {
     Bool,
+    Int16,
     Int32,
     Int64,
     Float32,
@@ -50,6 +52,7 @@ impl Value {
         Some(match self {
             Value::Null => return None,
             Value::Bool(_) => ValueType::Bool,
+            Value::Int16(_) => ValueType::Int16,
             Value::Int32(_) => ValueType::Int32,
             Value::Int64(_) => ValueType::Int64,
             Value::Float32(_) => ValueType::Float32,
@@ -80,6 +83,7 @@ mod tests {
     #[test]
     fn ty_matches_variant() {
         assert_eq!(Value::Bool(true).ty(), Some(ValueType::Bool));
+        assert_eq!(Value::Int16(1).ty(), Some(ValueType::Int16));
         assert_eq!(Value::Int32(1).ty(), Some(ValueType::Int32));
         assert_eq!(Value::Int64(1).ty(), Some(ValueType::Int64));
         assert_eq!(Value::Float32(1.0).ty(), Some(ValueType::Float32));
