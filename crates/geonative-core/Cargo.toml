@@ -13,3 +13,13 @@ keywords.workspace = true
 readme = "README.md"
 
 [dependencies]
+thiserror = "2"
+geo-types = { version = "0.7", optional = true }
+
+[features]
+default = []
+# Enable conversions between geonative-core types and the `geo-types` crate,
+# unlocking the wider Rust geospatial ecosystem (algorithms in `geo`,
+# format crates, PROJ wrappers). Z/M ordinates are silently dropped because
+# `geo-types` is strictly 2D.
+geo-types = ["dep:geo-types"]
