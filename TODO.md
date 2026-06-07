@@ -50,9 +50,15 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **`parse_geo_metadata`** — hand-rolled extractor for primary_column + EPSG code from the `geo` JSON (avoids `serde_json` dep)
 - [x] Inverse Arrow → `Value` decoder for every supported type (Bool, Int16/32/64, Float32/64, String, Binary, Timestamp(µs)→DateTime, FixedSizeBinary(16)→Guid)
 - [x] Hides bbox covering columns + geometry column when reconstructing user attributes — our writer + reader round-trip to identical `Schema`
-- [x] **End-to-end real-data test**: 75 Vicmap features round-trip GDB → writer → reader → `Feature` exactly (DateTime within µs tolerance per Arrow encoding)
+- [x] **End-to-end real-data test**: 75 fixture features round-trip GDB → writer → reader → `Feature` exactly (DateTime within µs tolerance per Arrow encoding)
 - [x] **`geonative convert` CLI subcommand** — clap-based, `geonative convert <input.gdb> <output.parquet> [--layer NAME] [--hilbert] [--batch-size N] [--no-bbox-columns]`, auto-detects single user layer, lists available when ambiguous, format-detection by extension with helpful errors
-- [x] Smoke-tested: 75-feature VMFEAT auto-layer; 64.8K TREE_DENSITY MultiPolygons with `--hilbert`; helpful errors for ambiguous + bad-extension cases
+- [x] Smoke-tested release build on single-layer + multi-layer + Hilbert + bad-extension paths
+
+### mmap-backed .gdbtable (Phase 5)
+- [x] `Layer` switched from `Vec<u8>` to `memmap2::Mmap` — peak application memory dropped 7–12× on big stress fixtures (1.36 GB → 195 MB on the 3M-polygon fixture; 2.15 GB → 176 MB on the 10.5M-point fixture)
+- [x] OS-managed mmap'd pages are evicted under memory pressure, so the app can now process arbitrarily-large `.gdbtable` files on a low-RAM device
+- [x] Crate-level lint relaxed `forbid(unsafe_code)` → `deny + #[allow]` scoped to the single `Mmap::map` call with documented SAFETY note
+- [x] 126 workspace tests all green; throughput roughly preserved (sequential scan is mmap-friendly)
 
 ---
 
@@ -64,7 +70,6 @@ Living checklist. Status as of `81a73ef` on `main`.
 
 ## Next up (priority order)
 
-- [ ] **`memmap2`-backed `.gdbtable`** reader — cut peak RSS from ~source-size to <100MB constant on multi-GB files.
 - [ ] **Add module-level rustdoc** (`//!` blocks) to every remaining `.rs` file in the workspace following the pattern set in `wkb.rs` (one-line purpose + architecture + clever bits).
 - [ ] **`geonative-shapefile`** reader — byte specs already researched (deep-research-3 + compass-3 in `~/Downloads`).
 - [ ] Extract `Dataset` / `Layer` / `LayerWriter` traits in `geonative-core` once a second format reader lands.

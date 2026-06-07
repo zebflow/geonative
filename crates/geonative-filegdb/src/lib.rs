@@ -9,7 +9,10 @@
 //! **v0.0.1 is a placeholder.** Real read API in active development at
 //! <https://github.com/zebflow/geonative>.
 
-#![forbid(unsafe_code)]
+// We `deny` rather than `forbid` so the single mmap call in `dataset.rs` can
+// explicitly opt in via `#[allow(unsafe_code)]`. Every other module remains
+// safe-Rust-only.
+#![deny(unsafe_code)]
 
 pub mod bytes;
 pub mod catalog;

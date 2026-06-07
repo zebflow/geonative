@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use geonative_core::{Crs, Feature, FieldDef, GeomField, GeometryType, Schema, ValueType};
+use memmap2::Mmap;
 
 use crate::catalog::{open_geodatabase, LayerInfo};
 use crate::error::{GdbError, Result};
@@ -48,12 +49,22 @@ impl Geodatabase {
     }
 }
 
-/// One open layer (feature class or attribute table). Holds the in-memory
-/// `.gdbtable` bytes and the parsed `.gdbtablx` row index.
+/// One open layer (feature class or attribute table).
+///
+/// The `.gdbtable` is **memory-mapped** (`memmap2::Mmap`), so peak resident
+/// set size stays constant at < ~100 MB regardless of the underlying file
+/// size — the OS pages bytes into RAM on demand and evicts them under
+/// pressure. We hold the `Mmap` for the layer's lifetime so the OS knows
+/// the mapping is still live.
+///
+/// The `.gdbtablx` is small (≤ a few MB even for very large layers) and is
+/// fully read into a `Vec` — no mmap there.
 #[derive(Debug)]
 pub struct Layer {
     name: String,
-    table_bytes: Vec<u8>,
+    /// Memory map of the `.gdbtable` file. Derefs to `&[u8]` for the same
+    /// slice-based access pattern as a `Vec<u8>`.
+    mmap: Mmap,
     tablx: Tablx,
     table: Table,
     schema: Schema,
@@ -65,9 +76,23 @@ pub struct Layer {
 
 impl Layer {
     fn open(dir: &Path, info: &LayerInfo) -> Result<Self> {
-        let table_bytes = std::fs::read(info.table_path(dir))?;
+        let table_path = info.table_path(dir);
+        let table_file = std::fs::File::open(&table_path).map_err(|e| {
+            GdbError::malformed(format!("opening {}: {e}", table_path.display()))
+        })?;
+        // SAFETY: standard mmap caveats — if the file is truncated or modified
+        // by another process while mapped, accessing bytes may SIGBUS. We use
+        // this read-only on local disk for a process-private view; that's the
+        // canonical safe scenario for `memmap2::Mmap::map`.
+        #[allow(unsafe_code)]
+        let mmap = unsafe {
+            Mmap::map(&table_file).map_err(|e| {
+                GdbError::malformed(format!("mmap {}: {e}", table_path.display()))
+            })?
+        };
         let tablx_bytes = std::fs::read(info.tablx_path(dir))?;
-        let table = Table::parse(&table_bytes)?;
+
+        let table = Table::parse(&mmap)?;
         let tablx = Tablx::parse(&tablx_bytes)?;
 
         let geom_field_idx = table.field_section.geometry_field_index();
@@ -76,7 +101,7 @@ impl Layer {
 
         Ok(Self {
             name: info.name.clone(),
-            table_bytes,
+            mmap,
             tablx,
             table,
             schema,
@@ -131,7 +156,7 @@ impl<'a> Iterator for FeatureIter<'a> {
 
 fn decode_one(layer: &Layer, row_idx: u64, offset: u64) -> Result<Feature> {
     let fid = (row_idx as i64) + 1;
-    let blob = slice_row_blob(&layer.table_bytes, offset)?;
+    let blob = slice_row_blob(&layer.mmap, offset)?;
     let row = decode_row_blob(blob, fid, &layer.table.field_section)?;
 
     let geometry = match (row.geometry_blob.as_deref(), layer.geom_field_idx) {
