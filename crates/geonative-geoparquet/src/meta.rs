@@ -61,6 +61,56 @@ fn geometry_type_string(t: GeometryType) -> &'static str {
     }
 }
 
+/// Tiny "good enough" parser for the bits of GeoParquet `geo` metadata our
+/// reader cares about: the primary geometry column name and, if present, the
+/// EPSG code of its CRS. Avoids pulling in `serde_json` for a few dozen bytes
+/// of well-structured input.
+#[derive(Debug, Default, Clone)]
+pub struct GeoMetadataParsed {
+    pub primary_column: Option<String>,
+    pub epsg_code: Option<u32>,
+}
+
+pub fn parse_geo_metadata(json: &str) -> GeoMetadataParsed {
+    GeoMetadataParsed {
+        primary_column: extract_str_value(json, "\"primary_column\""),
+        epsg_code: extract_epsg_code(json),
+    }
+}
+
+/// Find `"<key>":"<value>"` in `s` (skipping any whitespace between key,
+/// colon, and value) and return `value`.
+fn extract_str_value(s: &str, quoted_key: &str) -> Option<String> {
+    let key_pos = s.find(quoted_key)?;
+    let rest = &s[key_pos + quoted_key.len()..];
+    let after_colon = rest.find(':')?;
+    let after_colon_slice = &rest[after_colon + 1..];
+    let open_quote = after_colon_slice.find('"')?;
+    let body = &after_colon_slice[open_quote + 1..];
+    let close_quote = body.find('"')?;
+    Some(body[..close_quote].to_string())
+}
+
+/// Look for an `"id":{"authority":"EPSG","code":<n>}` clause in the JSON and
+/// return `<n>`. Handles minor whitespace variation; only the first match
+/// (the primary column's CRS) is returned.
+fn extract_epsg_code(json: &str) -> Option<u32> {
+    let authority_marker = "\"authority\":\"EPSG\"";
+    let pos = json.find(authority_marker)?;
+    let after = &json[pos + authority_marker.len()..];
+    let code_marker = "\"code\":";
+    let cpos = after.find(code_marker)?;
+    let after_code = &after[cpos + code_marker.len()..];
+    let trimmed = after_code.trim_start();
+    let end = trimmed
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(trimmed.len());
+    if end == 0 {
+        return None;
+    }
+    trimmed[..end].parse::<u32>().ok()
+}
+
 fn json_escape(s: &str) -> String {
     // GeoParquet column names are typically simple identifiers; do the minimal
     // JSON escape (backslash + quote) and leave the rest as-is. If users name
@@ -126,6 +176,34 @@ mod tests {
             include_bbox_covering: false,
         });
         assert!(s.contains(r#""code":4326"#));
+    }
+
+    #[test]
+    fn parse_round_trips_with_build() {
+        let crs = Crs::Epsg(4326);
+        let json = build_geo_metadata_json(&GeoMetadataInput {
+            primary_column: "SHAPE",
+            layer_geometry_type: GeometryType::MultiPolygon,
+            crs: &crs,
+            include_bbox_covering: true,
+        });
+        let parsed = parse_geo_metadata(&json);
+        assert_eq!(parsed.primary_column.as_deref(), Some("SHAPE"));
+        assert_eq!(parsed.epsg_code, Some(4326));
+    }
+
+    #[test]
+    fn parse_handles_missing_crs() {
+        let crs = Crs::Unknown;
+        let json = build_geo_metadata_json(&GeoMetadataInput {
+            primary_column: "geometry",
+            layer_geometry_type: GeometryType::Point,
+            crs: &crs,
+            include_bbox_covering: false,
+        });
+        let parsed = parse_geo_metadata(&json);
+        assert_eq!(parsed.primary_column.as_deref(), Some("geometry"));
+        assert_eq!(parsed.epsg_code, None);
     }
 
     #[test]

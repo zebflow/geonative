@@ -17,3 +17,7 @@ name = "geonative"
 path = "src/main.rs"
 
 [dependencies]
+geonative-core = { version = "0.0.1", path = "../geonative-core" }
+geonative-filegdb = { version = "0.0.1", path = "../geonative-filegdb" }
+geonative-geoparquet = { version = "0.0.1", path = "../geonative-geoparquet" }
+clap = { version = "4", features = ["derive"] }

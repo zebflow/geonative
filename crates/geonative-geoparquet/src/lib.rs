@@ -20,12 +20,14 @@ pub mod builder;
 pub mod error;
 pub mod hilbert;
 pub mod meta;
+pub mod reader;
 pub mod schema;
 pub mod writer;
 
 pub use builder::RecordBatchBuilder;
 pub use error::{GeoParquetError, Result};
-pub use meta::{build_geo_metadata_json, GeoMetadataInput};
+pub use meta::{build_geo_metadata_json, parse_geo_metadata, GeoMetadataInput, GeoMetadataParsed};
+pub use reader::{FeatureReadIter, GeoParquetReader};
 pub use schema::{
     arrow_type_for, gdb_days_to_unix_micros, map_schema, MappedSchema, SchemaMapOptions,
 };

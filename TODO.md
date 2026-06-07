@@ -45,6 +45,15 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **Real-data round-trip integration test** — 75/75 Vicmap FOI_LINE MultiLineStrings survive GDB → WKB → parquet → WKB → Geometry with `==` equality
 - [x] Comprehensive module-level rustdoc on `wkb.rs` (purpose, architecture, clever bits)
 
+### GeoParquet reader + CLI (Phase 4)
+- [x] **`GeoParquetReader`** in `geonative-geoparquet` — opens any spec-compliant 1.0/1.1 file, reconstructs `Schema` from `geo` metadata (with fallback to conventional column names), iterates `Feature` stream lazily per RecordBatch
+- [x] **`parse_geo_metadata`** — hand-rolled extractor for primary_column + EPSG code from the `geo` JSON (avoids `serde_json` dep)
+- [x] Inverse Arrow → `Value` decoder for every supported type (Bool, Int16/32/64, Float32/64, String, Binary, Timestamp(µs)→DateTime, FixedSizeBinary(16)→Guid)
+- [x] Hides bbox covering columns + geometry column when reconstructing user attributes — our writer + reader round-trip to identical `Schema`
+- [x] **End-to-end real-data test**: 75 Vicmap features round-trip GDB → writer → reader → `Feature` exactly (DateTime within µs tolerance per Arrow encoding)
+- [x] **`geonative convert` CLI subcommand** — clap-based, `geonative convert <input.gdb> <output.parquet> [--layer NAME] [--hilbert] [--batch-size N] [--no-bbox-columns]`, auto-detects single user layer, lists available when ambiguous, format-detection by extension with helpful errors
+- [x] Smoke-tested: 75-feature VMFEAT auto-layer; 64.8K TREE_DENSITY MultiPolygons with `--hilbert`; helpful errors for ambiguous + bad-extension cases
+
 ---
 
 ## In progress
@@ -55,10 +64,10 @@ Living checklist. Status as of `81a73ef` on `main`.
 
 ## Next up (priority order)
 
-- [ ] **GeoParquet reader** in `geonative-geoparquet` — uses the new `from_wkb` to materialize a `Feature` stream from a parquet file. Closes the round-trip loop end-to-end.
-- [ ] **`geonative-cli convert`** subcommand wiring the `convert.rs` example into the binary.
 - [ ] **`memmap2`-backed `.gdbtable`** reader — cut peak RSS from ~source-size to <100MB constant on multi-GB files.
 - [ ] **Add module-level rustdoc** (`//!` blocks) to every remaining `.rs` file in the workspace following the pattern set in `wkb.rs` (one-line purpose + architecture + clever bits).
+- [ ] **`geonative-shapefile`** reader — byte specs already researched (deep-research-3 + compass-3 in `~/Downloads`).
+- [ ] Extract `Dataset` / `Layer` / `LayerWriter` traits in `geonative-core` once a second format reader lands.
 
 ---
 

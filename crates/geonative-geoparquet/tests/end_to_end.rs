@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use arrow::array::{Array, BinaryArray, Int32Array, StringArray};
 use geonative_filegdb::open as open_gdb;
-use geonative_geoparquet::{GeoParquetWriter, WriterOptions};
+use geonative_geoparquet::{GeoParquetReader, GeoParquetWriter, WriterOptions};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 
@@ -203,6 +203,79 @@ fn wkb_decoder_round_trips_via_parquet() {
         assert_eq!(orig, back, "round-trip mismatch at row {i}");
     }
     println!("OK: 75/75 geometries round-tripped GDB → WKB → parquet → WKB → Geometry");
+}
+
+/// Full GDB → parquet → `GeoParquetReader` → Feature stream round-trip with
+/// real Vicmap data. Uses the high-level reader (not just raw WKB).
+#[test]
+fn full_round_trip_via_geoparquet_reader() {
+    let Some(gdb_path) = fixture_path() else {
+        eprintln!("(skipped: set GEONATIVE_FIXTURE_GDB to enable)");
+        return;
+    };
+    let gdb = open_gdb(&gdb_path).expect("open .gdb");
+    let layer = gdb.layer("FOI_LINE").expect("FOI_LINE layer");
+    let schema = layer.schema().clone();
+
+    // Capture originals before consuming the layer twice.
+    let originals: Vec<geonative_core::Feature> = layer
+        .read()
+        .map(|f| f.unwrap())
+        .collect();
+
+    let tmpdir = tempfile::tempdir().unwrap();
+    let path = tmpdir.path().join("foi.parquet");
+    {
+        let file = std::fs::File::create(&path).unwrap();
+        let mut w = GeoParquetWriter::create(file, &schema, WriterOptions::default()).unwrap();
+        for f in &originals {
+            w.write(f).unwrap();
+        }
+        w.close().unwrap();
+    }
+
+    let reader = GeoParquetReader::open(&path).expect("open reader");
+    let read_schema = reader.schema().clone();
+    assert_eq!(read_schema.fields.len(), schema.fields.len());
+    assert_eq!(read_schema.crs, geonative_core::Crs::Epsg(7844));
+    assert_eq!(
+        read_schema.geometry.as_ref().unwrap().kind,
+        geonative_core::GeometryType::MultiLineString
+    );
+
+    let read_features: Vec<geonative_core::Feature> = reader
+        .into_features()
+        .map(|f| f.expect("decode feature"))
+        .collect();
+    assert_eq!(read_features.len(), originals.len());
+
+    // DateTime survives the round-trip through Arrow Timestamp(Microsecond),
+    // so sub-µs precision (< 1 / 86_400e6 days ≈ 1.16e-11) may differ. Allow it.
+    fn values_eq_approx(a: &geonative_core::Value, b: &geonative_core::Value) -> bool {
+        use geonative_core::Value::*;
+        match (a, b) {
+            (DateTime(x), DateTime(y)) => (x - y).abs() < 2e-11, // ≤ ~1 µs
+            _ => a == b,
+        }
+    }
+    for (i, (orig, back)) in originals.iter().zip(&read_features).enumerate() {
+        assert_eq!(orig.geometry, back.geometry, "geom mismatch at row {i}");
+        assert_eq!(
+            orig.attributes.len(),
+            back.attributes.len(),
+            "attr count mismatch at row {i}"
+        );
+        for (j, (a, b)) in orig.attributes.iter().zip(&back.attributes).enumerate() {
+            assert!(
+                values_eq_approx(a, b),
+                "attr {j} mismatch at row {i}: {a:?} vs {b:?}"
+            );
+        }
+    }
+    println!(
+        "OK: {} features round-tripped GDB → writer → reader → Features",
+        read_features.len()
+    );
 }
 
 /// Convert the same fixture twice — once without Hilbert sort, once with —
