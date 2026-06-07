@@ -18,6 +18,7 @@
 
 pub mod builder;
 pub mod error;
+pub mod hilbert;
 pub mod meta;
 pub mod schema;
 pub mod writer;

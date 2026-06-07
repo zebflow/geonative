@@ -141,3 +141,99 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
         file_size
     );
 }
+
+/// Convert the same fixture twice — once without Hilbert sort, once with —
+/// then compare per-row-group bbox-x spread. Hilbert sort should drastically
+/// shrink the average spread (= better row-group pruning for spatial reads).
+#[test]
+fn hilbert_sort_reduces_row_group_bbox_spread() {
+    use parquet::file::statistics::Statistics;
+
+    let Some(gdb_path) = fixture_path() else {
+        eprintln!("(skipped: set GEONATIVE_FIXTURE_GDB to enable)");
+        return;
+    };
+    let gdb = open_gdb(&gdb_path).expect("open .gdb");
+    let layer = gdb.layer("FOI_LINE").expect("FOI_LINE layer");
+    let schema = layer.schema().clone();
+
+    let tmpdir = tempfile::tempdir().unwrap();
+    let unsorted = tmpdir.path().join("unsorted.parquet");
+    let sorted = tmpdir.path().join("sorted.parquet");
+
+    // Force small batch_size so we get multiple row groups out of 75 features
+    // (otherwise the whole file is one row group and the comparison is moot).
+    let small_batch_opts = |hilbert: bool| WriterOptions {
+        batch_size: 10,
+        hilbert_sort: hilbert,
+        ..WriterOptions::default()
+    };
+
+    for (path, hilbert) in [(&unsorted, false), (&sorted, true)] {
+        let file = std::fs::File::create(path).unwrap();
+        let mut w =
+            GeoParquetWriter::create(file, &schema, small_batch_opts(hilbert)).unwrap();
+        for f in layer.read() {
+            w.write(&f.unwrap()).unwrap();
+        }
+        w.close().unwrap();
+    }
+
+    // Read row-group statistics from both files. Sum the xmin..xmax spread
+    // across all row groups; the sorted file should be much smaller.
+    let mean_spread = |path: &std::path::Path| -> f64 {
+        let bytes = std::fs::read(path).unwrap();
+        let reader = SerializedFileReader::new(bytes::Bytes::from(bytes)).unwrap();
+        let md = reader.metadata();
+        let xmin_col = md
+            .file_metadata()
+            .schema_descr()
+            .columns()
+            .iter()
+            .position(|c| c.name() == "xmin")
+            .expect("xmin column missing");
+        let xmax_col = md
+            .file_metadata()
+            .schema_descr()
+            .columns()
+            .iter()
+            .position(|c| c.name() == "xmax")
+            .expect("xmax column missing");
+
+        let mut total_spread = 0.0;
+        let mut n_groups = 0;
+        for rg in md.row_groups() {
+            let xmin_stats = rg.column(xmin_col).statistics();
+            let xmax_stats = rg.column(xmax_col).statistics();
+            if let (Some(Statistics::Double(xmin_s)), Some(Statistics::Double(xmax_s))) =
+                (xmin_stats, xmax_stats)
+            {
+                if let (Some(&min_of_xmin), Some(&max_of_xmax)) =
+                    (xmin_s.min_opt(), xmax_s.max_opt())
+                {
+                    let spread = max_of_xmax - min_of_xmin;
+                    if spread.is_finite() {
+                        total_spread += spread;
+                        n_groups += 1;
+                    }
+                }
+            }
+        }
+        assert!(n_groups >= 2, "test requires ≥ 2 row groups; got {n_groups}");
+        total_spread / n_groups as f64
+    };
+
+    let unsorted_spread = mean_spread(&unsorted);
+    let sorted_spread = mean_spread(&sorted);
+
+    println!(
+        "mean row-group X-spread (deg lon): unsorted = {:.4}, sorted = {:.4}, ratio = {:.2}x",
+        unsorted_spread,
+        sorted_spread,
+        unsorted_spread / sorted_spread.max(1e-9)
+    );
+    assert!(
+        sorted_spread < unsorted_spread,
+        "Hilbert sort should reduce row-group spread, but {sorted_spread} >= {unsorted_spread}"
+    );
+}

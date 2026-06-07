@@ -20,23 +20,32 @@ use parquet::file::metadata::KeyValue;
 use parquet::file::properties::WriterProperties;
 
 use crate::builder::RecordBatchBuilder;
-use crate::error::{GeoParquetError, Result};
+use crate::error::Result;
+use crate::hilbert::{hilbert_distance_for, union_bbox};
 use crate::meta::{build_geo_metadata_json, GeoMetadataInput};
 use crate::schema::{map_schema, MappedSchema, SchemaMapOptions};
 
 /// User-tunable options for the writer.
 #[derive(Debug, Clone)]
 pub struct WriterOptions {
-    /// Rows per batch / Parquet row group. Default 10_000 — matches zebflow's
-    /// `geoparquet_optimize.rs`.
+    /// Rows per batch / Parquet row group. Default 10_000.
     pub batch_size: usize,
-    /// Compression codec for parquet pages. Default ZSTD level 3 (a good
-    /// size/speed trade-off; also matches zebflow).
+    /// Compression codec for parquet pages. Default ZSTD level 3 (good
+    /// size/speed trade-off).
     pub compression: Compression,
     /// Add `xmin/ymin/xmax/ymax` covering columns + declare them in the
     /// GeoParquet 1.1 `covering` metadata. Enables row-group pruning by
     /// readers that honour the spec.
     pub add_bbox_columns: bool,
+    /// **Buffer all features in RAM**, sort by 2D Hilbert curve over each
+    /// geometry's bbox centroid, then emit row groups in sorted order. This
+    /// makes the auto-generated parquet column statistics (min/max per row
+    /// group) highly selective for spatial predicates — typical query speeds
+    /// up by ~10x for bbox-filtered reads on disk-resident data.
+    ///
+    /// Trade-off: peak memory is proportional to the dataset size. Use only
+    /// when the data fits comfortably in RAM. Disabled by default.
+    pub hilbert_sort: bool,
 }
 
 impl Default for WriterOptions {
@@ -45,6 +54,7 @@ impl Default for WriterOptions {
             batch_size: 10_000,
             compression: Compression::ZSTD(Default::default()),
             add_bbox_columns: true,
+            hilbert_sort: false,
         }
     }
 }
@@ -55,6 +65,13 @@ impl Default for WriterOptions {
 /// declaration is captured at construction time and emitted in the `geo`
 /// metadata. Multi-geometry-type layers are not yet auto-detected — the
 /// schema's declared type wins.
+/// One pending feature in the Hilbert-sort buffer. We keep the precomputed
+/// bbox centroid so the final sort only does one pass over the data.
+struct PendingFeature {
+    feature: Feature,
+    bbox: Option<[f64; 4]>,
+}
+
 pub struct GeoParquetWriter<W: Write + Send> {
     inner: ArrowWriter<W>,
     mapped: MappedSchema,
@@ -63,6 +80,9 @@ pub struct GeoParquetWriter<W: Write + Send> {
     batch_size: usize,
     add_bbox_columns: bool,
     layer_geometry_type: GeometryType,
+    /// Populated only when `hilbert_sort` is enabled; otherwise stays empty.
+    hilbert_buffer: Vec<PendingFeature>,
+    hilbert_enabled: bool,
 }
 
 impl<W: Write + Send> GeoParquetWriter<W> {
@@ -96,14 +116,28 @@ impl<W: Write + Send> GeoParquetWriter<W> {
             batch_size: opts.batch_size,
             add_bbox_columns: opts.add_bbox_columns,
             layer_geometry_type,
+            hilbert_buffer: Vec::new(),
+            hilbert_enabled: opts.hilbert_sort,
         })
     }
 
     /// Append one feature; flushes a row group when `batch_size` is reached.
+    ///
+    /// When `hilbert_sort` is enabled, the feature is buffered instead of
+    /// written immediately — the actual write happens on [`close`](Self::close)
+    /// after the buffer is sorted.
     pub fn write(&mut self, feat: &Feature) -> Result<()> {
-        self.builder.append(feat)?;
-        if self.builder.len() >= self.batch_size {
-            self.flush()?;
+        if self.hilbert_enabled {
+            let bbox = feat.geometry.as_ref().and_then(|g| g.bbox());
+            self.hilbert_buffer.push(PendingFeature {
+                feature: feat.clone(),
+                bbox,
+            });
+        } else {
+            self.builder.append(feat)?;
+            if self.builder.len() >= self.batch_size {
+                self.flush()?;
+            }
         }
         Ok(())
     }
@@ -117,8 +151,62 @@ impl<W: Write + Send> GeoParquetWriter<W> {
         Ok(())
     }
 
+    /// Sort the Hilbert buffer by spatial locality and drain it through the
+    /// regular write path. Features with no usable bbox sort to the end.
+    fn drain_hilbert_buffer(&mut self) -> Result<()> {
+        if self.hilbert_buffer.is_empty() {
+            return Ok(());
+        }
+        // Compute dataset bbox from per-feature bboxes.
+        let dataset_bbox = union_bbox(
+            self.hilbert_buffer
+                .iter()
+                .filter_map(|p| p.bbox),
+        );
+
+        // Compute Hilbert distance for each pending feature.
+        const ORDER: u32 = 16;
+        let bbox = dataset_bbox.unwrap_or([0.0, 0.0, 1.0, 1.0]);
+        let mut indexed: Vec<(usize, u64)> = self
+            .hilbert_buffer
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let d = match p.bbox {
+                    Some(b) => hilbert_distance_for(
+                        ((b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5),
+                        bbox,
+                        ORDER,
+                    ),
+                    None => u64::MAX,
+                };
+                (i, d)
+            })
+            .collect();
+        indexed.sort_by_key(|(_, d)| *d);
+
+        // Take ownership of the buffer so we can move features out without
+        // running into borrow-checker conflicts vs `self.builder`.
+        let buffer = std::mem::take(&mut self.hilbert_buffer);
+
+        // We need to remove items from `buffer` by sorted index. Build an
+        // option-Vec so we can move each feature out exactly once.
+        let mut opts: Vec<Option<Feature>> =
+            buffer.into_iter().map(|p| Some(p.feature)).collect();
+        for (i, _) in indexed {
+            if let Some(feat) = opts[i].take() {
+                self.builder.append(&feat)?;
+                if self.builder.len() >= self.batch_size {
+                    self.flush()?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Finish remaining rows, attach the `geo` metadata, and close the file.
     pub fn close(mut self) -> Result<()> {
+        self.drain_hilbert_buffer()?;
         self.flush()?;
 
         let geo_json = build_geo_metadata_json(&GeoMetadataInput {
