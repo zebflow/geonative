@@ -1,0 +1,15 @@
+[package]
+name = "geonative-processing"
+description = "Geoprocessing algorithms (buffer, clip, reproject, …) for the geonative geospatial library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+
+[dependencies]

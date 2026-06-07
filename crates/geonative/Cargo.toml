@@ -1,0 +1,28 @@
+[package]
+name = "geonative"
+description = "Lightweight pure-Rust geospatial library. Zero default features — opt in to file formats, processing, and conversion via Cargo features."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+
+# Features will map to optional sub-crate dependencies once they exist:
+#   default       = []
+#   file-gdb      = ["dep:geonative-filegdb"]
+#   file-shp      = ["dep:geonative-shapefile"]
+#   file-geojson  = ["dep:geonative-geojson"]
+#   file-parquet  = ["dep:geonative-geoparquet"]
+#   processing    = ["dep:geonative-processing"]
+#   convert       = ["dep:geonative-convert"]
+#   all-files     = ["file-gdb", "file-shp", "file-geojson", "file-parquet"]
+
+[features]
+default = []
+
+[dependencies]
