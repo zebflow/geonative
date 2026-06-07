@@ -152,6 +152,30 @@ impl Geometry {
         }
     }
 
+    /// Compute the 2D bounding box `[xmin, ymin, xmax, ymax]`.
+    ///
+    /// Returns `None` for empty geometries (no coordinates to bound). NaN
+    /// coordinates are skipped, so `POINT EMPTY` (stored as NaN/NaN) also
+    /// yields `None`.
+    pub fn bbox(&self) -> Option<[f64; 4]> {
+        let mut acc: Option<[f64; 4]> = None;
+        for_each_xy(self, &mut |x, y| {
+            if !x.is_finite() || !y.is_finite() {
+                return;
+            }
+            match &mut acc {
+                None => acc = Some([x, y, x, y]),
+                Some(b) => {
+                    if x < b[0] { b[0] = x; }
+                    if y < b[1] { b[1] = y; }
+                    if x > b[2] { b[2] = x; }
+                    if y > b[3] { b[3] = y; }
+                }
+            }
+        });
+        acc
+    }
+
     /// True if any coordinate in the tree carries an M ordinate.
     pub fn has_m(&self) -> bool {
         match self {
@@ -171,6 +195,59 @@ impl Geometry {
                     || p.holes.iter().any(|h| h.coords.iter().any(Coord::has_m))
             }),
             Geometry::GeometryCollection(v) => v.iter().any(Geometry::has_m),
+        }
+    }
+}
+
+/// Walk every (x, y) coordinate in the tree and invoke `f`. Used by `bbox`
+/// and (later) by visitor-style writers.
+fn for_each_xy(g: &Geometry, f: &mut dyn FnMut(f64, f64)) {
+    match g {
+        Geometry::Empty(_) => {}
+        Geometry::Point(c) => f(c.x, c.y),
+        Geometry::LineString(ls) => {
+            for c in &ls.coords {
+                f(c.x, c.y);
+            }
+        }
+        Geometry::Polygon(p) => {
+            for c in &p.exterior.coords {
+                f(c.x, c.y);
+            }
+            for h in &p.holes {
+                for c in &h.coords {
+                    f(c.x, c.y);
+                }
+            }
+        }
+        Geometry::MultiPoint(v) => {
+            for c in v {
+                f(c.x, c.y);
+            }
+        }
+        Geometry::MultiLineString(v) => {
+            for ls in v {
+                for c in &ls.coords {
+                    f(c.x, c.y);
+                }
+            }
+        }
+        Geometry::MultiPolygon(v) => {
+            for p in v {
+                for c in &p.exterior.coords {
+                    f(c.x, c.y);
+                }
+                for h in &p.holes {
+                    for c in &h.coords {
+                        f(c.x, c.y);
+                    }
+                }
+            }
+        }
+        Geometry::GeometryCollection(v) => {
+            for inner in v {
+                for_each_xy(inner, f);
+            }
         }
     }
 }
@@ -220,6 +297,53 @@ mod tests {
 
         let ls = LineString::new(vec![Coord::xy(0.0, 0.0), Coord::xy(1.0, 1.0)]);
         assert!(!Geometry::LineString(ls).is_empty());
+    }
+
+    #[test]
+    fn bbox_of_polygon_with_hole() {
+        let p = Polygon::new(
+            LineString::new(vec![
+                Coord::xy(0.0, 0.0),
+                Coord::xy(10.0, 0.0),
+                Coord::xy(10.0, 10.0),
+                Coord::xy(0.0, 10.0),
+                Coord::xy(0.0, 0.0),
+            ]),
+            vec![LineString::new(vec![
+                Coord::xy(2.0, 2.0),
+                Coord::xy(4.0, 2.0),
+                Coord::xy(4.0, 4.0),
+                Coord::xy(2.0, 4.0),
+                Coord::xy(2.0, 2.0),
+            ])],
+        );
+        let bbox = Geometry::Polygon(p).bbox().unwrap();
+        assert_eq!(bbox, [0.0, 0.0, 10.0, 10.0]);
+    }
+
+    #[test]
+    fn bbox_of_empty_geometry_is_none() {
+        assert!(Geometry::Empty(GeometryType::Polygon).bbox().is_none());
+        assert!(Geometry::LineString(LineString::default()).bbox().is_none());
+    }
+
+    #[test]
+    fn bbox_skips_nan() {
+        let g = Geometry::MultiPoint(vec![
+            Coord::xy(1.0, 2.0),
+            Coord::xy(f64::NAN, f64::NAN),
+            Coord::xy(5.0, 6.0),
+        ]);
+        assert_eq!(g.bbox(), Some([1.0, 2.0, 5.0, 6.0]));
+    }
+
+    #[test]
+    fn bbox_of_geometry_collection() {
+        let g = Geometry::GeometryCollection(vec![
+            Geometry::Point(Coord::xy(-1.0, -1.0)),
+            Geometry::Point(Coord::xy(5.0, 5.0)),
+        ]);
+        assert_eq!(g.bbox(), Some([-1.0, -1.0, 5.0, 5.0]));
     }
 
     #[test]

@@ -34,6 +34,7 @@ pub mod feature;
 pub mod geometry;
 pub mod schema;
 pub mod value;
+pub mod wkb;
 
 #[cfg(feature = "geo-types")]
 pub mod geo_types_interop;

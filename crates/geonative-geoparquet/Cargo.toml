@@ -13,3 +13,12 @@ keywords.workspace = true
 readme = "README.md"
 
 [dependencies]
+geonative-core = { version = "0.0.1", path = "../geonative-core" }
+arrow = "58.3.0"
+parquet = { version = "58.3.0", default-features = false, features = ["arrow", "zstd"] }
+thiserror = "2"
+
+[dev-dependencies]
+geonative-filegdb = { path = "../geonative-filegdb" }
+tempfile = "3"
+bytes = "1"
