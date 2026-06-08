@@ -1,0 +1,17 @@
+[package]
+name = "geonative-proj"
+description = "Pure-Rust projection engine (Web Mercator, UTM, GDA2020/MGA via Transverse Mercator/Krüger n-series) for the geonative geospatial library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+
+[dependencies]
+geonative-core = { workspace = true }
+thiserror = "2"

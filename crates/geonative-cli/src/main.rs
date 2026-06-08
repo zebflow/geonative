@@ -63,6 +63,10 @@ enum Cmd {
     /// Profile a dataset: streaming pass producing null counts, min/max,
     /// distinct counts, top-N values, head sample, computed extent.
     Profile(ProfileArgs),
+
+    /// Reproject features to a target CRS (4326/3857/UTM/MGA) and write to
+    /// a new file. Pure-Rust Krüger n-series; nanometre precision in zone.
+    Reproject(ReprojectArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -74,6 +78,11 @@ struct ConvertArgs {
     /// Layer name to convert (required for multi-layer FileGDB inputs).
     #[arg(short, long)]
     layer: Option<String>,
+    /// Reproject every feature's geometry to this CRS mid-stream.
+    /// Accepted forms: `EPSG:4326`, `4326`. v0.1 supports 4326, 3857,
+    /// 7844, UTM (32601–32760), GDA2020/MGA (7846–7859).
+    #[arg(long = "to-crs")]
+    to_crs: Option<String>,
     /// Buffer all features and Hilbert-sort by bbox centroid before writing
     /// (parquet output only). Spatially clusters the file; memory ∝ feature count.
     #[arg(long)]
@@ -84,6 +93,22 @@ struct ConvertArgs {
     /// Skip the bbox covering columns + GeoParquet `covering` metadata.
     #[arg(long)]
     no_bbox_columns: bool,
+}
+
+#[derive(Parser, Debug)]
+struct ReprojectArgs {
+    /// Input dataset.
+    input: PathBuf,
+    /// Output file.
+    output: PathBuf,
+    /// Target CRS: `EPSG:4326` or `4326`.
+    #[arg(long = "to-crs")]
+    to_crs: String,
+    /// Layer name (required for multi-layer FileGDB inputs).
+    #[arg(short, long)]
+    layer: Option<String>,
+    #[arg(long, default_value_t = 10_000)]
+    batch_size: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -155,11 +180,16 @@ fn run(cli: Cli) -> Result<(), String> {
         Cmd::FilterBbox(args) => run_filter_bbox(args),
         Cmd::Metadata(args) => run_metadata(args),
         Cmd::Profile(args) => run_profile(args),
+        Cmd::Reproject(args) => run_reproject(args),
     }
 }
 
 fn run_convert(args: ConvertArgs) -> Result<(), String> {
     let start = std::time::Instant::now();
+    let to_crs = match args.to_crs {
+        Some(s) => Some(parse_crs(&s)?),
+        None => None,
+    };
     let opts = ConvertOptions {
         layer: args.layer,
         sink: SinkOptions {
@@ -167,6 +197,7 @@ fn run_convert(args: ConvertArgs) -> Result<(), String> {
             add_bbox_columns: !args.no_bbox_columns,
             hilbert_sort: args.hilbert,
         },
+        to_crs,
         progress: Some(Arc::new(move |written, expected| {
             let elapsed = start.elapsed().as_secs_f64().max(0.001);
             let pct = if expected > 0 {
@@ -276,6 +307,38 @@ fn run_metadata(args: MetadataArgs) -> Result<(), String> {
         .map_err(|e| format!("writing {}: {e}", target.display()))?;
     eprintln!("wrote sidecar to {}", target.display());
     Ok(())
+}
+
+fn run_reproject(args: ReprojectArgs) -> Result<(), String> {
+    let target = parse_crs(&args.to_crs)?;
+    let opts = ConvertOptions {
+        layer: args.layer,
+        sink: SinkOptions {
+            batch_size: args.batch_size,
+            add_bbox_columns: true,
+            hilbert_sort: false,
+        },
+        to_crs: Some(target),
+        progress: None,
+    };
+    let stats = geonative_convert::convert(&args.input, &args.output, opts)
+        .map_err(|e| e.to_string())?;
+    eprintln!(
+        "reprojected {} features in {:.2}s — {}",
+        stats.features,
+        stats.elapsed_secs,
+        human_bytes(stats.output_bytes),
+    );
+    Ok(())
+}
+
+fn parse_crs(s: &str) -> Result<geonative_core::Crs, String> {
+    let trimmed = s.trim();
+    let digits = trimmed.strip_prefix("EPSG:").or_else(|| trimmed.strip_prefix("epsg:")).unwrap_or(trimmed);
+    let code: u32 = digits
+        .parse()
+        .map_err(|e| format!("--to-crs expects EPSG:NNNN or NNNN, got '{s}': {e}"))?;
+    Ok(geonative_core::Crs::Epsg(code))
 }
 
 fn run_profile(args: ProfileArgs) -> Result<(), String> {

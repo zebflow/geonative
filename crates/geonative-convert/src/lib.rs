@@ -45,7 +45,7 @@ pub mod inspect;
 pub mod io;
 pub mod metadata;
 
-pub use convert::{convert, ConvertOptions, ConvertStats};
+pub use convert::{convert, reproject, ConvertOptions, ConvertStats};
 pub use error::{ConvertError, Result};
 pub use filter::{bbox_intersects, filter_bbox, Bbox2, FilterStats};
 pub use inspect::{inspect, CrsInspection, DatasetInspection, FieldInspection, GeometryInspection, LayerInspection};

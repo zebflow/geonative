@@ -8,7 +8,10 @@
 use std::path::Path;
 use std::time::Instant;
 
-use crate::error::Result;
+use geonative_core::Crs;
+use geonative_proj::Transformer;
+
+use crate::error::{ConvertError, Result};
 use crate::io::{Sink, SinkOptions, Source};
 
 #[derive(Clone, Default)]
@@ -17,9 +20,18 @@ pub struct ConvertOptions {
     pub layer: Option<String>,
     /// Sink configuration (batch size, Hilbert sort, bbox columns).
     pub sink: SinkOptions,
+    /// Reproject every feature's geometry to this CRS mid-stream. If set,
+    /// the output's declared CRS is updated to match.
+    pub to_crs: Option<Crs>,
     /// Optional progress callback fired every ~2s with `(features_written,
     /// expected_total_if_known)`. None means silent.
     pub progress: Option<ProgressFn>,
+}
+
+impl From<geonative_proj::ProjError> for ConvertError {
+    fn from(e: geonative_proj::ProjError) -> Self {
+        ConvertError::InvalidArgument(format!("reproject: {e}"))
+    }
 }
 
 impl std::fmt::Debug for ConvertOptions {
@@ -27,6 +39,7 @@ impl std::fmt::Debug for ConvertOptions {
         f.debug_struct("ConvertOptions")
             .field("layer", &self.layer)
             .field("sink", &self.sink)
+            .field("to_crs", &self.to_crs)
             .field("progress", &self.progress.as_ref().map(|_| "<callback>"))
             .finish()
     }
@@ -43,10 +56,33 @@ pub struct ConvertStats {
     pub output_bytes: u64,
 }
 
+/// Convenience: convert with reproject, no other options. Convert preserves
+/// the source layer naming etc.
+pub fn reproject(src: &Path, dst: &Path, target_crs: Crs) -> Result<ConvertStats> {
+    convert(
+        src,
+        dst,
+        ConvertOptions {
+            to_crs: Some(target_crs),
+            ..ConvertOptions::default()
+        },
+    )
+}
+
 pub fn convert(src: &Path, dst: &Path, opts: ConvertOptions) -> Result<ConvertStats> {
     let source = Source::open(src, opts.layer.as_deref())?;
-    let schema = source.schema_cloned()?;
+    let mut schema = source.schema_cloned()?;
     let expected = source.feature_count().unwrap_or(0);
+
+    // If reprojecting, build a Transformer up-front (once) and overwrite
+    // the schema's CRS so the sink writes the right metadata.
+    let transformer = match &opts.to_crs {
+        Some(target) => Some(Transformer::from_crs(&schema.crs, target)?),
+        None => None,
+    };
+    if let Some(target) = &opts.to_crs {
+        schema.crs = target.clone();
+    }
 
     let mut sink = Sink::create(dst, &schema, opts.sink.clone())?;
 
@@ -54,7 +90,12 @@ pub fn convert(src: &Path, dst: &Path, opts: ConvertOptions) -> Result<ConvertSt
     let mut last_report = Instant::now();
     let mut count: u64 = 0;
     let progress = opts.progress.clone();
-    source.for_each(|feat| {
+    source.for_each(|mut feat| {
+        if let Some(t) = &transformer {
+            if let Some(g) = feat.geometry.as_mut() {
+                t.transform_geometry(g)?;
+            }
+        }
         sink.write(&feat)?;
         count += 1;
         if let Some(cb) = &progress {

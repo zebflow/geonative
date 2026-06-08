@@ -312,6 +312,75 @@ fn profile_emits_expected_json() {
 }
 
 #[test]
+fn reproject_4326_to_3857_changes_coords() {
+    let dir = unique_workdir("reproject");
+    let src = dir.join("src.parquet");
+    let dst = dir.join("dst.parquet");
+    build_fixture(&src);
+
+    // Source fixture is EPSG:4326 with points at (0,0), (10,10), (20,20).
+    // Reproject to 3857 — non-zero coords should become large metres.
+    let out = Command::new(bin())
+        .args(["reproject"])
+        .arg(&src)
+        .arg(&dst)
+        .args(["--to-crs", "3857"])
+        .output()
+        .expect("run reproject");
+    assert!(
+        out.status.success(),
+        "reproject failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let r = geonative_geoparquet::GeoParquetReader::open(&dst).expect("open reprojected");
+    let feats: Vec<_> = r.into_features().collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(feats.len(), 3);
+    // (0,0) lng/lat in 4326 → (0,0) in Web Mercator.
+    if let Some(geonative_core::Geometry::Point(c)) = &feats[0].geometry {
+        assert!(c.x.abs() < 1e-3, "x at origin should be ~0, got {}", c.x);
+        assert!(c.y.abs() < 1e-3, "y at origin should be ~0, got {}", c.y);
+    } else {
+        panic!("expected Point");
+    }
+    // (10°, 10°) → ~1.1M m on both axes.
+    if let Some(geonative_core::Geometry::Point(c)) = &feats[1].geometry {
+        assert!(c.x > 1_100_000.0 && c.x < 1_120_000.0, "x got {}", c.x);
+        assert!(c.y > 1_100_000.0 && c.y < 1_120_000.0, "y got {}", c.y);
+    } else {
+        panic!("expected Point");
+    }
+}
+
+#[test]
+fn convert_with_to_crs_reprojects() {
+    // The `convert` subcommand also accepts --to-crs.
+    let dir = unique_workdir("convert_with_crs");
+    let src = dir.join("src.parquet");
+    let dst = dir.join("dst.geojson");
+    build_fixture(&src);
+
+    let out = Command::new(bin())
+        .args(["convert"])
+        .arg(&src)
+        .arg(&dst)
+        .args(["--to-crs", "EPSG:3857"])
+        .output()
+        .expect("run convert");
+    assert!(
+        out.status.success(),
+        "convert --to-crs failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let bytes = std::fs::read(&dst).unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let coords = &json["features"][1]["geometry"]["coordinates"];
+    // (10°, 10°) → (~1.11M, ~1.12M) in 3857
+    let x = coords[0].as_f64().unwrap();
+    assert!(x > 1_000_000.0, "expected reprojected x, got {x}");
+}
+
+#[test]
 fn metadata_writes_sidecar() {
     let dir = unique_workdir("metadata");
     let src = dir.join("src.parquet");

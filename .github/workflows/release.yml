@@ -87,6 +87,11 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
+      - name: Publish geonative-proj
+        run: cargo publish -p geonative-proj --no-verify
+      - name: Wait for index
+        run: sleep 30
+
       # Layer 3: depend on layer 2
       - name: Publish geonative-geoparquet
         run: cargo publish -p geonative-geoparquet --no-verify

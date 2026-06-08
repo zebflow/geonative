@@ -124,11 +124,26 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] Release workflow updated to publish all 10 real-0.1.0 crates in dep order.
 - [x] 267 workspace tests, clippy clean.
 
+### Projection engine (Phase 12e)
+- [x] **`geonative-proj` v0.1** — new pure-Rust projection engine. Strong-brand crate (not folded into utils — same identity weight as `-mvt`).
+  - Spherical Web Mercator (EPSG:4326 ↔ EPSG:3857), exact per the OGC spherical definition
+  - Transverse Mercator via **Krüger n-series, 6th order** — Karney 2011 formulation. Shared between WGS84/UTM and GDA2020/MGA on different ellipsoids.
+  - **WGS84/UTM zones 1–60 N+S** (EPSG:32601–32760)
+  - **GDA2020/MGA zones 46–59** (EPSG:7846–7859) — TM on GRS80
+  - EPSG:7844 (GDA2020 geographic) ≡ EPSG:4326 for v0.1 (~1.5 m visualisation caveat; full Helmert deferred)
+  - **`Transformer` handle** — `from_epsg(from, to)` / `from_crs(&Crs, &Crs)`, then `transform(&mut Coord)` / `transform_slice` / `transform_geometry` — same shape as the format-crate reader handles in the workspace.
+  - Two-projected-CRS pairs (e.g. MGA-55 → UTM-54) automatically pipe through 4326.
+  - 26 unit tests + 1 doc test. Round-trips are nanometre-precise.
+- [x] **`geonative-convert::convert` middleware** — `--to-crs` reprojects every feature mid-stream (no separate pass). Sink is told the new CRS so output metadata is correct.
+- [x] **CLI: `geonative reproject <in> <out> --to-crs EPSG:NNNN`** + `convert --to-crs` flag. End-to-end tested (4326 → 3857; convert with --to-crs writes correct GeoJSON).
+- [x] Release workflow extended to publish proj (between processing and geoparquet/mvt in dep order).
+- [x] 296 workspace tests, clippy clean.
+
 ---
 
 ## In progress
 
-- Phase 12e: `geonative-proj` v0.1 (4326↔3857 + UTM + GDA2020/MGA — Krüger n-series TM, from scratch)
+(nothing currently in flight — Sprint 12 complete)
 
 ---
 
