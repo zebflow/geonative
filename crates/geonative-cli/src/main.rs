@@ -21,15 +21,16 @@
 
 mod filter_bbox;
 mod inspect;
+mod io;
 mod metadata;
 mod optimize;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
-use geonative_filegdb::open as open_gdb;
-use geonative_geoparquet::{GeoParquetWriter, WriterOptions};
+
+use crate::io::{Sink, SinkOptions, Source};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -177,104 +178,26 @@ fn run(cli: Cli) -> Result<(), String> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum InputKind {
-    FileGdb,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum OutputKind {
-    GeoParquet,
-}
-
-fn detect_input(path: &Path) -> Result<InputKind, String> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase);
-    match ext.as_deref() {
-        Some("gdb") => Ok(InputKind::FileGdb),
-        Some(other) => Err(format!(
-            "unsupported input extension '.{other}' (convert v0.1 supports: .gdb)"
-        )),
-        None => Err(format!(
-            "could not determine input format from path: {} (extension required)",
-            path.display()
-        )),
-    }
-}
-
-fn detect_output(path: &Path) -> Result<OutputKind, String> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase);
-    match ext.as_deref() {
-        Some("parquet") => Ok(OutputKind::GeoParquet),
-        Some(other) => Err(format!(
-            "unsupported output extension '.{other}' (v0.1 supports: .parquet)"
-        )),
-        None => Err(format!(
-            "could not determine output format from path: {} (extension required)",
-            path.display()
-        )),
-    }
-}
-
 fn run_convert(args: ConvertArgs) -> Result<(), String> {
-    let input_kind = detect_input(&args.input)?;
-    let output_kind = detect_output(&args.output)?;
+    let source = Source::open(&args.input, args.layer.as_deref())?;
+    let schema = source.schema_cloned()?;
+    let expected = source.feature_count().unwrap_or(0);
 
-    match (input_kind, output_kind) {
-        (InputKind::FileGdb, OutputKind::GeoParquet) => convert_gdb_to_parquet(args),
-    }
-}
-
-fn convert_gdb_to_parquet(args: ConvertArgs) -> Result<(), String> {
-    let gdb =
-        open_gdb(&args.input).map_err(|e| format!("opening {}: {e}", args.input.display()))?;
-    let layers = gdb.layers();
-
-    let layer_name = match (&args.layer, layers) {
-        (Some(name), _) => name.clone(),
-        (None, [single]) => single.name.clone(),
-        (None, many) => {
-            return Err(format!(
-                "input has {} layers; specify which with --layer NAME. Available: {}",
-                many.len(),
-                many.iter()
-                    .map(|l| l.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))
-        }
-    };
-
-    let layer = gdb
-        .layer(&layer_name)
-        .map_err(|e| format!("opening layer '{layer_name}': {e}"))?;
-    let expected = layer.feature_count();
-
-    let writer_opts = WriterOptions {
-        batch_size: args.batch_size,
-        add_bbox_columns: !args.no_bbox_columns,
-        hilbert_sort: args.hilbert,
-        ..WriterOptions::default()
-    };
-
-    let file = std::fs::File::create(&args.output)
-        .map_err(|e| format!("creating {}: {e}", args.output.display()))?;
-    let mut writer = GeoParquetWriter::create(file, layer.schema(), writer_opts)
-        .map_err(|e| format!("creating writer: {e}"))?;
+    let mut sink = Sink::create(
+        &args.output,
+        &schema,
+        SinkOptions {
+            batch_size: args.batch_size,
+            add_bbox_columns: !args.no_bbox_columns,
+            hilbert_sort: args.hilbert,
+        },
+    )?;
 
     let start = Instant::now();
     let mut last_report = Instant::now();
     let mut count: u64 = 0;
-    for feat in layer.read() {
-        let feat = feat.map_err(|e| format!("decoding feature {count}: {e}"))?;
-        writer
-            .write(&feat)
-            .map_err(|e| format!("writing feature {count}: {e}"))?;
+    source.for_each(|feat| {
+        sink.write(&feat)?;
         count += 1;
         if last_report.elapsed().as_secs() >= 2 {
             let pct = if expected > 0 {
@@ -288,8 +211,9 @@ fn convert_gdb_to_parquet(args: ConvertArgs) -> Result<(), String> {
             );
             last_report = Instant::now();
         }
-    }
-    writer.close().map_err(|e| format!("closing writer: {e}"))?;
+        Ok(())
+    })?;
+    sink.close()?;
 
     let elapsed = start.elapsed();
     let out_size = std::fs::metadata(&args.output)
@@ -351,29 +275,43 @@ fn run_optimize(args: OptimizeArgs) -> Result<(), String> {
 
 fn run_filter_bbox(args: FilterBboxArgs) -> Result<(), String> {
     let bbox = filter_bbox::parse_bbox(&args.bbox)?;
-    if args.output.extension().and_then(|s| s.to_str()) != Some("parquet") {
-        return Err(format!(
-            "filter-bbox output must be a .parquet file: {}",
-            args.output.display()
-        ));
-    }
 
-    let report = filter_bbox::filter_bbox(filter_bbox::FilterBboxArgs {
-        input: &args.input,
-        output: &args.output,
-        bbox,
-        layer: args.layer.as_deref(),
-        batch_size: args.batch_size,
+    let source = Source::open(&args.input, args.layer.as_deref())?;
+    let schema = source.schema_cloned()?;
+    let mut sink = Sink::create(
+        &args.output,
+        &schema,
+        SinkOptions {
+            batch_size: args.batch_size,
+            add_bbox_columns: true,
+            hilbert_sort: false,
+        },
+    )?;
+
+    let start = Instant::now();
+    let mut scanned: u64 = 0;
+    let mut kept: u64 = 0;
+    source.for_each(|feat| {
+        scanned += 1;
+        if let Some(geom) = feat.geometry.as_ref() {
+            if let Some(fb) = geom.bbox() {
+                if filter_bbox::bbox_intersects(fb, bbox) {
+                    sink.write(&feat)?;
+                    kept += 1;
+                }
+            }
+        }
+        Ok(())
     })?;
-    let pct = if report.scanned > 0 {
-        100.0 * report.kept as f64 / report.scanned as f64
+    sink.close()?;
+
+    let elapsed = start.elapsed().as_secs_f64();
+    let pct = if scanned > 0 {
+        100.0 * kept as f64 / scanned as f64
     } else {
         0.0
     };
-    eprintln!(
-        "scanned {} features, kept {} ({:.1}%) in {:.2}s",
-        report.scanned, report.kept, pct, report.elapsed_secs
-    );
+    eprintln!("scanned {scanned} features, kept {kept} ({pct:.1}%) in {elapsed:.2}s");
     Ok(())
 }
 

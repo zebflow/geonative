@@ -21,6 +21,7 @@ geonative-core = { workspace = true }
 geonative-filegdb = { workspace = true }
 geonative-geoparquet = { workspace = true }
 geonative-shapefile = { workspace = true }
+geonative-geojson = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

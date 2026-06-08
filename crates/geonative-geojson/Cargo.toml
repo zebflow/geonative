@@ -1,8 +1,7 @@
 [package]
 name = "geonative-geojson"
-description = "GeoJSON reader and writer for the geonative geospatial library"
-# Placeholder; will track workspace version once implemented.
-version = "0.0.1"
+description = "GeoJSON (RFC 7946) reader and writer for the geonative geospatial library"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -14,3 +13,7 @@ keywords.workspace = true
 readme = "README.md"
 
 [dependencies]
+geonative-core = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"

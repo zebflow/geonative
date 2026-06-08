@@ -101,11 +101,17 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **`geonative metadata <source> [--write PATH]`** — writes a `.geonative.json` sidecar (inspect output + generator envelope with `spec_version`)
 - [x] 11 new tests added (6 unit, 5 end-to-end driving the compiled binary); 220 workspace tests now green, clippy `-D warnings` clean
 
+### GeoJSON read/write (Phase 12a)
+- [x] **`geonative-geojson` v0.1** promoted from placeholder — RFC 7946 reader + writer, 2D, all seven SF geometry types, schema inference (33 unit tests). 1.x `crs.properties.name` URN parsing for legacy feeds. Streaming writer (O(one feature) memory).
+- [x] **CLI Source+Sink dispatch** — new `crates/geonative-cli/src/io.rs` unifies format-polymorphic I/O. `convert`/`filter-bbox` now accept any input/output combo across `.gdb`/`.shp`/`.parquet`/`.geojson`; `inspect`/`metadata` accept `.geojson` too. Replaces the per-subcommand per-format dispatch.
+- [x] 3 new end-to-end CLI tests for GeoJSON paths (parquet↔geojson round-trip, inspect, filter-bbox); 257 workspace tests total, clippy clean
+
 ---
 
 ## In progress
 
-(nothing currently in flight)
+- Phase 12b: `geonative-processing` v0.1 + `profile` subcommand
+- Phase 12c: `geonative-proj-pure` v0.1 (4326↔3857 + UTM + GDA2020/MGA)
 
 ---
 

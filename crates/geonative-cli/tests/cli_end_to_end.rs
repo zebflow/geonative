@@ -160,6 +160,110 @@ fn filter_bbox_rejects_bad_bbox() {
 }
 
 #[test]
+fn convert_parquet_to_geojson_round_trip() {
+    let dir = unique_workdir("p2g");
+    let src = dir.join("src.parquet");
+    let mid = dir.join("mid.geojson");
+    let back = dir.join("back.parquet");
+    build_fixture(&src);
+
+    // parquet → geojson
+    let out = Command::new(bin())
+        .args(["convert"])
+        .arg(&src)
+        .arg(&mid)
+        .output()
+        .expect("run convert p->g");
+    assert!(
+        out.status.success(),
+        "parquet->geojson failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The output should be valid GeoJSON we can re-read
+    let bytes = std::fs::read(&mid).unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).expect("output is JSON");
+    assert_eq!(json["type"], "FeatureCollection");
+    assert_eq!(json["features"].as_array().unwrap().len(), 3);
+
+    // geojson → parquet
+    let out = Command::new(bin())
+        .args(["convert"])
+        .arg(&mid)
+        .arg(&back)
+        .output()
+        .expect("run convert g->p");
+    assert!(
+        out.status.success(),
+        "geojson->parquet failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let r = geonative_geoparquet::GeoParquetReader::open(&back).expect("open round-tripped");
+    assert_eq!(r.into_features().count(), 3);
+}
+
+#[test]
+fn inspect_geojson() {
+    let dir = unique_workdir("inspect_geojson");
+    let src = dir.join("src.geojson");
+    std::fs::write(
+        &src,
+        br#"{"type":"FeatureCollection","features":[
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[1,2]},"properties":{"name":"a"}}
+        ]}"#,
+    )
+    .unwrap();
+
+    let out = Command::new(bin())
+        .args(["inspect", "--pretty"])
+        .arg(&src)
+        .output()
+        .expect("run inspect");
+    assert!(
+        out.status.success(),
+        "inspect geojson failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["format"], "geojson");
+    assert_eq!(json["layers"][0]["geometry"]["kind"], "Point");
+    assert_eq!(json["layers"][0]["crs"]["code"], 4326);
+}
+
+#[test]
+fn filter_bbox_geojson_to_geojson() {
+    let dir = unique_workdir("filter_g2g");
+    let src = dir.join("src.geojson");
+    let dst = dir.join("dst.geojson");
+    std::fs::write(
+        &src,
+        br#"{"type":"FeatureCollection","features":[
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{}},
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[10,10]},"properties":{}},
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[20,20]},"properties":{}}
+        ]}"#,
+    )
+    .unwrap();
+
+    let out = Command::new(bin())
+        .args(["filter-bbox"])
+        .arg(&src)
+        .arg(&dst)
+        .args(["--bbox", "9,9,11,11"])
+        .output()
+        .expect("run filter-bbox");
+    assert!(
+        out.status.success(),
+        "filter-bbox g->g failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let bytes = std::fs::read(&dst).unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["features"].as_array().unwrap().len(), 1);
+}
+
+#[test]
 fn metadata_writes_sidecar() {
     let dir = unique_workdir("metadata");
     let src = dir.join("src.parquet");

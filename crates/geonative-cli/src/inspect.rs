@@ -97,10 +97,22 @@ pub fn inspect(source: &Path) -> Result<DatasetInspection, String> {
         "gdb" => inspect_filegdb(source),
         "shp" => inspect_shapefile(source),
         "parquet" => inspect_geoparquet(source),
+        "geojson" | "json" => inspect_geojson(source),
         other => Err(format!(
-            "unsupported input extension '.{other}' (supported: .gdb, .shp, .parquet)"
+            "unsupported input extension '.{other}' (supported: .gdb, .shp, .parquet, .geojson)"
         )),
     }
+}
+
+fn inspect_geojson(source: &Path) -> Result<DatasetInspection, String> {
+    let r =
+        geonative_geojson::GeoJsonReader::open(source).map_err(|e| format!("open geojson: {e}"))?;
+    let layer = layer_inspection_from("default", r.schema(), Some(r.feature_count() as i64));
+    Ok(DatasetInspection {
+        source: source.display().to_string(),
+        format: "geojson",
+        layers: vec![layer],
+    })
 }
 
 fn inspect_filegdb(source: &Path) -> Result<DatasetInspection, String> {
