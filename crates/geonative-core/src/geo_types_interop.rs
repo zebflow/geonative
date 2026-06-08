@@ -45,9 +45,9 @@ impl From<&Geometry> for GtGeometry<f64> {
             Geometry::Point(c) => GtGeometry::Point(GtPoint::new(c.x, c.y)),
             Geometry::LineString(ls) => GtGeometry::LineString(GtLineString::from(ls)),
             Geometry::Polygon(p) => GtGeometry::Polygon(GtPolygon::from(p)),
-            Geometry::MultiPoint(v) => GtGeometry::MultiPoint(GtMp(
-                v.iter().map(|c| GtPoint::new(c.x, c.y)).collect(),
-            )),
+            Geometry::MultiPoint(v) => {
+                GtGeometry::MultiPoint(GtMp(v.iter().map(|c| GtPoint::new(c.x, c.y)).collect()))
+            }
             Geometry::MultiLineString(v) => {
                 GtGeometry::MultiLineString(GtMls(v.iter().map(GtLineString::from).collect()))
             }

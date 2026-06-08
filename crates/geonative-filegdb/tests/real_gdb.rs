@@ -8,11 +8,11 @@
 //! layer, well-formed. Set:
 //!     export GEONATIVE_FIXTURE_GDB=".../Melbourne Water-0/VMFEAT.gdb"
 
-use geonative_filegdb::{
-    decode_row_blob, decode_shape_buffer, open_geodatabase, slice_row_blob, FieldTypeCode,
-    Table, Tablx,
-};
 use geonative_core::{Geometry, Value};
+use geonative_filegdb::{
+    decode_row_blob, decode_shape_buffer, open_geodatabase, slice_row_blob, FieldTypeCode, Table,
+    Tablx,
+};
 
 fn fixture_path() -> Option<std::path::PathBuf> {
     std::env::var_os("GEONATIVE_FIXTURE_GDB").map(std::path::PathBuf::from)
@@ -26,8 +26,8 @@ fn parse_system_catalog_header_and_fields() {
     };
 
     let catalog_path = gdb.join("a00000001.gdbtable");
-    let bytes = std::fs::read(&catalog_path)
-        .unwrap_or_else(|e| panic!("read {catalog_path:?}: {e}"));
+    let bytes =
+        std::fs::read(&catalog_path).unwrap_or_else(|e| panic!("read {catalog_path:?}: {e}"));
 
     let table = Table::parse(&bytes).expect("parse a00000001.gdbtable");
 
@@ -78,7 +78,7 @@ fn parse_feature_class_table_with_geometry_field() {
     };
 
     let bytes = std::fs::read(&path).unwrap();
-    let table = Table::parse(&bytes).expect(&format!("parse {path:?}"));
+    let table = Table::parse(&bytes).unwrap_or_else(|e| panic!("parse {path:?}: {e}"));
 
     // A feature-class table should have a Geometry field with populated
     // dequantization parameters.
@@ -124,7 +124,10 @@ fn parse_system_catalog_tablx_row_offsets() {
     let tablx_bytes = std::fs::read(gdb.join("a00000001.gdbtablx")).unwrap();
     let tx = Tablx::parse(&tablx_bytes).expect("parse a00000001.gdbtablx");
 
-    assert_eq!(tx.header.total_record_count as i64, table.header.valid_record_count);
+    assert_eq!(
+        tx.header.total_record_count as i64,
+        table.header.valid_record_count
+    );
     assert!(tx.header.offset_size >= 4 && tx.header.offset_size <= 6);
 
     // Every "present" row offset must fall within the .gdbtable file size
@@ -199,7 +202,7 @@ fn decode_every_row_of_feature_class_attributes() {
             assert_eq!(row.values[oid_idx], Value::Int64(fid));
         }
         // The geometry slot itself is Null in this phase; geometry_blob holds the bytes.
-        if let Some(_) = table.field_section.geometry_field_index() {
+        if table.field_section.geometry_field_index().is_some() {
             // Just check that we captured *some* geometry for a row that ogrinfo
             // reports as having geometry. Allow null too — some rows may not
             // have geometry assigned.
@@ -226,8 +229,7 @@ fn decode_every_row_of_feature_class_attributes() {
     }
 
     assert_eq!(
-        row_count as i64,
-        table.header.valid_record_count,
+        row_count as i64, table.header.valid_record_count,
         "row count mismatch"
     );
 
@@ -324,8 +326,7 @@ fn decode_all_geometries_of_feature_class() {
     }
 
     assert_eq!(
-        decoded as i64,
-        table.header.valid_record_count,
+        decoded as i64, table.header.valid_record_count,
         "geometry count mismatch"
     );
 
@@ -351,15 +352,20 @@ fn end_to_end_public_api_returns_core_features() {
     let schema = layer.schema();
     assert!(schema.geometry.is_some(), "schema should declare geometry");
     let geom_field = schema.geometry.as_ref().unwrap();
-    assert_eq!(geom_field.kind, geonative_core::GeometryType::MultiLineString);
-    assert!(matches!(&schema.crs, geonative_core::Crs::Wkt(s) if s.starts_with("GEOGCS[\"GDA2020\"")));
+    assert_eq!(
+        geom_field.kind,
+        geonative_core::GeometryType::MultiLineString
+    );
+    assert!(
+        matches!(&schema.crs, geonative_core::Crs::Wkt(s) if s.starts_with("GEOGCS[\"GDA2020\""))
+    );
     assert_eq!(layer.feature_count(), 75);
 
     // The user-facing attribute list should NOT contain OBJECTID or the
     // geometry slot — both are surfaced via Feature.fid / Feature.geometry.
     let attr_names: Vec<&str> = schema.fields.iter().map(|f| f.name.as_str()).collect();
-    assert!(!attr_names.iter().any(|n| *n == "OBJECTID"));
-    assert!(!attr_names.iter().any(|n| *n == "SHAPE"));
+    assert!(!attr_names.contains(&"OBJECTID"));
+    assert!(!attr_names.contains(&"SHAPE"));
     assert!(attr_names.contains(&"UFI"));
     assert!(attr_names.contains(&"NAME"));
     assert_eq!(

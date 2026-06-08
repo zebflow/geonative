@@ -26,7 +26,7 @@ use geonative_geoparquet::{GeoParquetWriter, WriterOptions};
     name = "geonative",
     version,
     about = "Pure-Rust geospatial toolkit",
-    propagate_version = true,
+    propagate_version = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -138,8 +138,8 @@ fn detect_output(path: &Path) -> Result<OutputKind, String> {
 }
 
 fn convert_gdb_to_parquet(args: ConvertArgs) -> Result<(), String> {
-    let gdb = open_gdb(&args.input)
-        .map_err(|e| format!("opening {}: {e}", args.input.display()))?;
+    let gdb =
+        open_gdb(&args.input).map_err(|e| format!("opening {}: {e}", args.input.display()))?;
     let layers = gdb.layers();
 
     let layer_name = match (&args.layer, layers) {
@@ -196,9 +196,7 @@ fn convert_gdb_to_parquet(args: ConvertArgs) -> Result<(), String> {
             last_report = Instant::now();
         }
     }
-    writer
-        .close()
-        .map_err(|e| format!("closing writer: {e}"))?;
+    writer.close().map_err(|e| format!("closing writer: {e}"))?;
 
     let elapsed = start.elapsed();
     let out_size = std::fs::metadata(&args.output)

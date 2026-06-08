@@ -46,7 +46,10 @@ impl<'a> LeReader<'a> {
 
     pub fn seek(&mut self, pos: usize) -> Result<()> {
         if pos > self.buf.len() {
-            return Err(GdbError::Eof { pos: self.buf.len(), need: pos - self.buf.len() });
+            return Err(GdbError::Eof {
+                pos: self.buf.len(),
+                need: pos - self.buf.len(),
+            });
         }
         self.pos = pos;
         Ok(())
@@ -58,7 +61,10 @@ impl<'a> LeReader<'a> {
 
     fn need(&self, n: usize) -> Result<()> {
         if self.remaining() < n {
-            Err(GdbError::Eof { pos: self.pos, need: n })
+            Err(GdbError::Eof {
+                pos: self.pos,
+                need: n,
+            })
         } else {
             Ok(())
         }
@@ -151,13 +157,15 @@ impl<'a> LeReader<'a> {
         loop {
             let start_pos = self.pos;
             let b = self.read_u8()?;
-            value |= ((b & 0x7F) as u64).checked_shl(shift).ok_or(
-                GdbError::VarintOverflow { pos: start_pos },
-            )?;
+            value |= ((b & 0x7F) as u64)
+                .checked_shl(shift)
+                .ok_or(GdbError::VarintOverflow { pos: start_pos })?;
             if b & 0x80 == 0 {
                 return Ok(value);
             }
-            shift = shift.checked_add(7).ok_or(GdbError::VarintOverflow { pos: start_pos })?;
+            shift = shift
+                .checked_add(7)
+                .ok_or(GdbError::VarintOverflow { pos: start_pos })?;
             if shift >= 64 {
                 return Err(GdbError::VarintOverflow { pos: start_pos });
             }
@@ -177,13 +185,15 @@ impl<'a> LeReader<'a> {
         let mut shift: u32 = 6;
         loop {
             let b = self.read_u8()?;
-            value |= ((b & 0x7F) as u64).checked_shl(shift).ok_or(
-                GdbError::VarintOverflow { pos: start_pos },
-            )?;
+            value |= ((b & 0x7F) as u64)
+                .checked_shl(shift)
+                .ok_or(GdbError::VarintOverflow { pos: start_pos })?;
             if (b & 0x80) == 0 {
                 return Ok(apply_sign(value, sign));
             }
-            shift = shift.checked_add(7).ok_or(GdbError::VarintOverflow { pos: start_pos })?;
+            shift = shift
+                .checked_add(7)
+                .ok_or(GdbError::VarintOverflow { pos: start_pos })?;
             if shift >= 64 {
                 return Err(GdbError::VarintOverflow { pos: start_pos });
             }
@@ -281,7 +291,10 @@ mod tests {
         // ten continuation bytes -> overflow
         let buf = vec![0xFFu8; 11];
         let mut r = LeReader::new(&buf);
-        assert!(matches!(r.read_varuint(), Err(GdbError::VarintOverflow { .. })));
+        assert!(matches!(
+            r.read_varuint(),
+            Err(GdbError::VarintOverflow { .. })
+        ));
     }
 
     #[test]

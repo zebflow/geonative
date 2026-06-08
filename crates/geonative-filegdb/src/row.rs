@@ -92,9 +92,9 @@ pub fn decode_row_blob(
             FieldTypeCode::Float32 => Value::Float32(r.read_f32()?),
             FieldTypeCode::Float64 => Value::Float64(r.read_f64()?),
 
-            FieldTypeCode::DateTime
-            | FieldTypeCode::DateOnly
-            | FieldTypeCode::TimeOnly => Value::DateTime(r.read_f64()?),
+            FieldTypeCode::DateTime | FieldTypeCode::DateOnly | FieldTypeCode::TimeOnly => {
+                Value::DateTime(r.read_f64()?)
+            }
 
             FieldTypeCode::DateTimeWithOffset => {
                 // Per GDAL: f64 days + i16 offset minutes. v0.1 IR doesn't
@@ -254,7 +254,7 @@ mod tests {
         // bit 0 = A, bit 1 = B. Set bit 1 → B is null; A is present.
         let mut blob = vec![0b00000010u8];
         blob.extend_from_slice(&999i32.to_le_bytes()); // A
-        // (no bytes for B, it's null)
+                                                       // (no bytes for B, it's null)
         let row = decode_row_blob(&blob, 1, &fs).unwrap();
         assert_eq!(
             row.values,

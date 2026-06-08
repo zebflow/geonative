@@ -34,8 +34,8 @@ use std::fs::File;
 use std::path::Path;
 
 use arrow::array::{
-    Array, BinaryArray, BooleanArray, FixedSizeBinaryArray, Float32Array, Float64Array,
-    Int16Array, Int32Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
+    Array, BinaryArray, BooleanArray, FixedSizeBinaryArray, Float32Array, Float64Array, Int16Array,
+    Int32Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
 };
 use arrow::datatypes::{DataType, SchemaRef, TimeUnit};
 use geonative_core::{
@@ -49,8 +49,14 @@ use crate::error::{GeoParquetError, Result};
 use crate::meta::parse_geo_metadata;
 
 const BBOX_COL_NAMES: &[&str] = &["xmin", "ymin", "xmax", "ymax"];
-const GEOMETRY_COL_FALLBACKS: &[&str] =
-    &["geometry", "geom", "SHAPE", "wkb_geometry", "the_geom", "shape"];
+const GEOMETRY_COL_FALLBACKS: &[&str] = &[
+    "geometry",
+    "geom",
+    "SHAPE",
+    "wkb_geometry",
+    "the_geom",
+    "shape",
+];
 
 /// Open and iterate a GeoParquet file.
 pub struct GeoParquetReader {
@@ -132,23 +138,24 @@ fn reconstruct_schema(
 
     // Resolve geometry column name → arrow index.
     let geom_col_idx = if let Some(name) = parsed.primary_column.as_deref() {
-        arrow
-            .index_of(name)
-            .map_err(|_| GeoParquetError::schema(format!("geo primary_column '{name}' not in arrow schema")))?
+        arrow.index_of(name).map_err(|_| {
+            GeoParquetError::schema(format!("geo primary_column '{name}' not in arrow schema"))
+        })?
     } else {
         let mut found = None;
         for cand in GEOMETRY_COL_FALLBACKS {
             if let Ok(i) = arrow.index_of(cand) {
-                if matches!(arrow.field(i).data_type(), DataType::Binary | DataType::LargeBinary) {
+                if matches!(
+                    arrow.field(i).data_type(),
+                    DataType::Binary | DataType::LargeBinary
+                ) {
                     found = Some(i);
                     break;
                 }
             }
         }
         found.ok_or_else(|| {
-            GeoParquetError::schema(
-                "no geo metadata and no conventional geometry column found",
-            )
+            GeoParquetError::schema("no geo metadata and no conventional geometry column found")
         })?
     };
 
@@ -159,8 +166,7 @@ fn reconstruct_schema(
         if i == geom_col_idx {
             continue;
         }
-        if BBOX_COL_NAMES.contains(&f.name().as_str())
-            && matches!(f.data_type(), DataType::Float64)
+        if BBOX_COL_NAMES.contains(&f.name().as_str()) && matches!(f.data_type(), DataType::Float64)
         {
             continue;
         }
@@ -252,7 +258,7 @@ impl Iterator for FeatureReadIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            // Need to (re)fill current batch?
+            // Need to (re)fill the current batch?
             let needs_refill = match &self.current_batch {
                 None => true,
                 Some(b) => self.cursor >= b.num_rows(),
@@ -264,18 +270,23 @@ impl Iterator for FeatureReadIter {
                     Some(Ok(batch)) => {
                         self.current_batch = Some(batch);
                         self.cursor = 0;
+                        // Loop back: re-check needs_refill so an empty batch
+                        // is skipped instead of triggering an out-of-bounds
+                        // decode.
+                        continue;
                     }
                 }
             }
 
-            let batch = self.current_batch.as_ref().expect("just refilled");
+            let batch = self.current_batch.as_ref().expect("non-empty after refill");
             let row = self.cursor;
             self.cursor += 1;
-
-            match decode_row(batch, row, self.geom_col_idx, &self.attr_col_indices) {
-                Ok(f) => return Some(Ok(f)),
-                Err(e) => return Some(Err(e)),
-            }
+            return Some(decode_row(
+                batch,
+                row,
+                self.geom_col_idx,
+                &self.attr_col_indices,
+            ));
         }
     }
 }
@@ -315,25 +326,48 @@ fn decode_row(
                     .value(row),
             ),
             DataType::Int16 => Value::Int16(
-                col.as_any().downcast_ref::<Int16Array>().unwrap().value(row),
+                col.as_any()
+                    .downcast_ref::<Int16Array>()
+                    .unwrap()
+                    .value(row),
             ),
             DataType::Int32 => Value::Int32(
-                col.as_any().downcast_ref::<Int32Array>().unwrap().value(row),
+                col.as_any()
+                    .downcast_ref::<Int32Array>()
+                    .unwrap()
+                    .value(row),
             ),
             DataType::Int64 => Value::Int64(
-                col.as_any().downcast_ref::<Int64Array>().unwrap().value(row),
+                col.as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(row),
             ),
             DataType::Float32 => Value::Float32(
-                col.as_any().downcast_ref::<Float32Array>().unwrap().value(row),
+                col.as_any()
+                    .downcast_ref::<Float32Array>()
+                    .unwrap()
+                    .value(row),
             ),
             DataType::Float64 => Value::Float64(
-                col.as_any().downcast_ref::<Float64Array>().unwrap().value(row),
+                col.as_any()
+                    .downcast_ref::<Float64Array>()
+                    .unwrap()
+                    .value(row),
             ),
             DataType::Utf8 => Value::String(
-                col.as_any().downcast_ref::<StringArray>().unwrap().value(row).to_string(),
+                col.as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .value(row)
+                    .to_string(),
             ),
             DataType::Binary => Value::Binary(
-                col.as_any().downcast_ref::<BinaryArray>().unwrap().value(row).to_vec(),
+                col.as_any()
+                    .downcast_ref::<BinaryArray>()
+                    .unwrap()
+                    .value(row)
+                    .to_vec(),
             ),
             DataType::Timestamp(TimeUnit::Microsecond, _) => {
                 let us = col
@@ -426,10 +460,8 @@ mod tests {
         assert!(read_schema.geometry.is_some());
         assert_eq!(read_schema.crs, Crs::Epsg(4326));
 
-        let read_features: Vec<Feature> = reader
-            .into_features()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
+        let read_features: Vec<Feature> =
+            reader.into_features().collect::<Result<Vec<_>>>().unwrap();
         assert_eq!(read_features.len(), features.len());
         // FID is not persisted in GeoParquet, so compare only geometry + attrs.
         for (i, (orig, back)) in features.iter().zip(&read_features).enumerate() {

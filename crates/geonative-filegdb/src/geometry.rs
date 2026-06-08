@@ -336,7 +336,11 @@ mod tests {
     }
 
     fn enc_varint(buf: &mut Vec<u8>, v: i64) {
-        let (mag, sign_bit) = if v < 0 { ((-v) as u64, 0x40u8) } else { (v as u64, 0u8) };
+        let (mag, sign_bit) = if v < 0 {
+            ((-v) as u64, 0x40u8)
+        } else {
+            (v as u64, 0u8)
+        };
         // first byte holds 6 low magnitude bits + sign bit + continuation
         let lo6 = (mag & 0x3F) as u8;
         let rest = mag >> 6;
@@ -392,11 +396,15 @@ mod tests {
         enc_varuint(&mut buf, SHPT::ARC as u64);
         enc_varuint(&mut buf, 2); // 2 points
         enc_varuint(&mut buf, 1); // 1 part
-        for _ in 0..4 { enc_varuint(&mut buf, 0); } // bbox stub
-        // (no part-count entry because n_parts - 1 == 0)
-        // coords: (10, 20), (30, 40) as cumulative deltas
-        enc_varint(&mut buf, 10); enc_varint(&mut buf, 20);
-        enc_varint(&mut buf, 20); enc_varint(&mut buf, 20);
+        for _ in 0..4 {
+            enc_varuint(&mut buf, 0);
+        } // bbox stub
+          // (no part-count entry because n_parts - 1 == 0)
+          // coords: (10, 20), (30, 40) as cumulative deltas
+        enc_varint(&mut buf, 10);
+        enc_varint(&mut buf, 20);
+        enc_varint(&mut buf, 20);
+        enc_varint(&mut buf, 20);
 
         let g = decode_shape_buffer(&buf, &meta).unwrap();
         match g {
@@ -418,14 +426,21 @@ mod tests {
         enc_varuint(&mut buf, SHPT::ARC as u64);
         enc_varuint(&mut buf, 5); // total 5 points
         enc_varuint(&mut buf, 2); // 2 parts
-        for _ in 0..4 { enc_varuint(&mut buf, 0); } // bbox stub
+        for _ in 0..4 {
+            enc_varuint(&mut buf, 0);
+        } // bbox stub
         enc_varuint(&mut buf, 2); // part 0 has 2 points; part 1 implicit = 3
-        // coords (cumulative across both parts)
-        enc_varint(&mut buf, 1); enc_varint(&mut buf, 1);   // (1,1)
-        enc_varint(&mut buf, 1); enc_varint(&mut buf, 0);   // (2,1)
-        enc_varint(&mut buf, 10); enc_varint(&mut buf, 10); // (12,11)
-        enc_varint(&mut buf, 1); enc_varint(&mut buf, 0);   // (13,11)
-        enc_varint(&mut buf, 0); enc_varint(&mut buf, 1);   // (13,12)
+                                  // coords (cumulative across both parts)
+        enc_varint(&mut buf, 1);
+        enc_varint(&mut buf, 1); // (1,1)
+        enc_varint(&mut buf, 1);
+        enc_varint(&mut buf, 0); // (2,1)
+        enc_varint(&mut buf, 10);
+        enc_varint(&mut buf, 10); // (12,11)
+        enc_varint(&mut buf, 1);
+        enc_varint(&mut buf, 0); // (13,11)
+        enc_varint(&mut buf, 0);
+        enc_varint(&mut buf, 1); // (13,12)
 
         let g = decode_shape_buffer(&buf, &meta).unwrap();
         match g {

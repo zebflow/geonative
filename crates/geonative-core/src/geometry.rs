@@ -16,19 +16,39 @@ pub struct Coord {
 
 impl Coord {
     pub const fn xy(x: f64, y: f64) -> Self {
-        Self { x, y, z: None, m: None }
+        Self {
+            x,
+            y,
+            z: None,
+            m: None,
+        }
     }
 
     pub const fn xyz(x: f64, y: f64, z: f64) -> Self {
-        Self { x, y, z: Some(z), m: None }
+        Self {
+            x,
+            y,
+            z: Some(z),
+            m: None,
+        }
     }
 
     pub const fn xym(x: f64, y: f64, m: f64) -> Self {
-        Self { x, y, z: None, m: Some(m) }
+        Self {
+            x,
+            y,
+            z: None,
+            m: Some(m),
+        }
     }
 
     pub const fn xyzm(x: f64, y: f64, z: f64, m: f64) -> Self {
-        Self { x, y, z: Some(z), m: Some(m) }
+        Self {
+            x,
+            y,
+            z: Some(z),
+            m: Some(m),
+        }
     }
 
     pub const fn has_z(&self) -> bool {
@@ -141,9 +161,7 @@ impl Geometry {
                     || p.holes.iter().any(|h| h.coords.iter().any(Coord::has_z))
             }
             Geometry::MultiPoint(v) => v.iter().any(Coord::has_z),
-            Geometry::MultiLineString(v) => {
-                v.iter().any(|ls| ls.coords.iter().any(Coord::has_z))
-            }
+            Geometry::MultiLineString(v) => v.iter().any(|ls| ls.coords.iter().any(Coord::has_z)),
             Geometry::MultiPolygon(v) => v.iter().any(|p| {
                 p.exterior.coords.iter().any(Coord::has_z)
                     || p.holes.iter().any(|h| h.coords.iter().any(Coord::has_z))
@@ -166,10 +184,18 @@ impl Geometry {
             match &mut acc {
                 None => acc = Some([x, y, x, y]),
                 Some(b) => {
-                    if x < b[0] { b[0] = x; }
-                    if y < b[1] { b[1] = y; }
-                    if x > b[2] { b[2] = x; }
-                    if y > b[3] { b[3] = y; }
+                    if x < b[0] {
+                        b[0] = x;
+                    }
+                    if y < b[1] {
+                        b[1] = y;
+                    }
+                    if x > b[2] {
+                        b[2] = x;
+                    }
+                    if y > b[3] {
+                        b[3] = y;
+                    }
                 }
             }
         });
@@ -187,9 +213,7 @@ impl Geometry {
                     || p.holes.iter().any(|h| h.coords.iter().any(Coord::has_m))
             }
             Geometry::MultiPoint(v) => v.iter().any(Coord::has_m),
-            Geometry::MultiLineString(v) => {
-                v.iter().any(|ls| ls.coords.iter().any(Coord::has_m))
-            }
+            Geometry::MultiLineString(v) => v.iter().any(|ls| ls.coords.iter().any(Coord::has_m)),
             Geometry::MultiPolygon(v) => v.iter().any(|p| {
                 p.exterior.coords.iter().any(Coord::has_m)
                     || p.holes.iter().any(|h| h.coords.iter().any(Coord::has_m))

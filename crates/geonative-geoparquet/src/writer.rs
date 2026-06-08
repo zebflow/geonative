@@ -158,11 +158,7 @@ impl<W: Write + Send> GeoParquetWriter<W> {
             return Ok(());
         }
         // Compute dataset bbox from per-feature bboxes.
-        let dataset_bbox = union_bbox(
-            self.hilbert_buffer
-                .iter()
-                .filter_map(|p| p.bbox),
-        );
+        let dataset_bbox = union_bbox(self.hilbert_buffer.iter().filter_map(|p| p.bbox));
 
         // Compute Hilbert distance for each pending feature.
         const ORDER: u32 = 16;
@@ -191,8 +187,7 @@ impl<W: Write + Send> GeoParquetWriter<W> {
 
         // We need to remove items from `buffer` by sorted index. Build an
         // option-Vec so we can move each feature out exactly once.
-        let mut opts: Vec<Option<Feature>> =
-            buffer.into_iter().map(|p| Some(p.feature)).collect();
+        let mut opts: Vec<Option<Feature>> = buffer.into_iter().map(|p| Some(p.feature)).collect();
         for (i, _) in indexed {
             if let Some(feat) = opts[i].take() {
                 self.builder.append(&feat)?;
@@ -275,7 +270,8 @@ mod tests {
         let mut buf = Vec::<u8>::new();
         {
             let cursor = Cursor::new(&mut buf);
-            let mut w = GeoParquetWriter::create(cursor, &schema, WriterOptions::default()).unwrap();
+            let mut w =
+                GeoParquetWriter::create(cursor, &schema, WriterOptions::default()).unwrap();
 
             for i in 0i32..5 {
                 let feat = Feature::new(
@@ -306,7 +302,8 @@ mod tests {
         let mut buf = Vec::<u8>::new();
         {
             let cursor = Cursor::new(&mut buf);
-            let mut w = GeoParquetWriter::create(cursor, &schema, WriterOptions::default()).unwrap();
+            let mut w =
+                GeoParquetWriter::create(cursor, &schema, WriterOptions::default()).unwrap();
             w.write(&Feature::new(
                 Some(1),
                 Some(Geometry::LineString(LineString::new(vec![

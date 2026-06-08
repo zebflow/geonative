@@ -1,7 +1,8 @@
 [package]
 name = "geonative-geojson"
 description = "GeoJSON reader and writer for the geonative geospatial library"
-version.workspace = true
+# Placeholder; will track workspace version once implemented.
+version = "0.0.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

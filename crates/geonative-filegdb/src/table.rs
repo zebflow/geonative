@@ -222,12 +222,16 @@ pub struct FieldSection {
 impl FieldSection {
     /// Index of the geometry field, if any.
     pub fn geometry_field_index(&self) -> Option<usize> {
-        self.fields.iter().position(|f| f.ty == FieldTypeCode::Geometry)
+        self.fields
+            .iter()
+            .position(|f| f.ty == FieldTypeCode::Geometry)
     }
 
     /// Index of the OBJECTID field, if any.
     pub fn objectid_field_index(&self) -> Option<usize> {
-        self.fields.iter().position(|f| f.ty == FieldTypeCode::ObjectId)
+        self.fields
+            .iter()
+            .position(|f| f.ty == FieldTypeCode::ObjectId)
     }
 }
 
@@ -285,7 +289,7 @@ fn parse_field_descriptor(r: &mut LeReader, layer_flags: &LayerFlags) -> Result<
         FieldTypeCode::ObjectId => {
             let width = r.read_u8()? as u32;
             let _flag = r.read_u8()?; // documented as constant 2
-            // OBJECTID has no default value section.
+                                      // OBJECTID has no default value section.
             (Some(width), false, Vec::new(), None)
         }
         FieldTypeCode::Binary
@@ -381,12 +385,7 @@ fn parse_geometry_field_meta(r: &mut LeReader, layer_flags: &LayerFlags) -> Resu
     let ztolerance = if has_z_ost { Some(r.read_f64()?) } else { None };
 
     // Extent XY is ALWAYS present for Geometry fields.
-    let extent_xy = [
-        r.read_f64()?,
-        r.read_f64()?,
-        r.read_f64()?,
-        r.read_f64()?,
-    ];
+    let extent_xy = [r.read_f64()?, r.read_f64()?, r.read_f64()?, r.read_f64()?];
     // Z/M extent is gated on layer-level has_z / has_m, not the sub-flags.
     let layer_has_z = layer_flags.has_z();
     let layer_has_m = layer_flags.has_m();

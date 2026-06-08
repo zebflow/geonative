@@ -60,6 +60,15 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] Crate-level lint relaxed `forbid(unsafe_code)` → `deny + #[allow]` scoped to the single `Mmap::map` call with documented SAFETY note
 - [x] 126 workspace tests all green; throughput roughly preserved (sequential scan is mmap-friendly)
 
+### Tag-driven crates.io publish setup (Phase 6)
+- [x] Workspace version bumped 0.0.1 → 0.1.0 for implemented crates; placeholders (shapefile/geojson/processing/convert/meta) pinned to 0.0.1 so they don't accidentally ship as empty 0.1.0 shells
+- [x] Inter-crate deps moved to `[workspace.dependencies]`; per-crate manifests use `name = { workspace = true }` (avoids the `sed`-the-Cargo.toml hack used by some sibling projects)
+- [x] `.github/workflows/release.yml` — triggers on `v*` tag push; runs test + clippy then publishes core → filegdb → geoparquet → cli sequentially with 30s waits for crates.io indexing; creates GitHub Release with auto-generated notes
+- [x] `.github/workflows/ci.yml` — fmt + clippy + test on push/PR across ubuntu/macos/windows
+- [x] First `cargo fmt --all` pass + all `clippy -D warnings` issues resolved (workspace builds clippy-clean)
+- [ ] **You: add `CARGO_REGISTRY_TOKEN` secret in GitHub Settings → Secrets and variables → Actions** (from your crates.io account API tokens)
+- [ ] **You: `git tag v0.1.0 && git push origin v0.1.0`** to kick off the first real release
+
 ---
 
 ## In progress

@@ -1,9 +1,10 @@
 //! Coordinate reference system. Carried through verbatim from the source so
 //! each writer can serialize it in its own preferred form.
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Crs {
     /// CRS unknown or unspecified.
+    #[default]
     Unknown,
     /// An EPSG authority code (e.g. 4326, 7844).
     Epsg(u32),
@@ -77,9 +78,7 @@ fn find_clause_value(wkt: &str, opener: &str) -> Option<u32> {
     // `"` or `]`. Iterating from the right ensures we match the outer authority.
     let pos = wkt.rfind(opener)?;
     let rest = &wkt[pos + opener.len()..];
-    let end = rest
-        .find(|c: char| c == '"' || c == ']' || c == ',' || c == ' ')
-        .unwrap_or(rest.len());
+    let end = rest.find(['"', ']', ',', ' ']).unwrap_or(rest.len());
     rest[..end].parse::<u32>().ok()
 }
 
@@ -109,10 +108,7 @@ fn extract_outer_crs_name(wkt: &str) -> Option<String> {
 
 fn epsg_for_common_name(name: &str) -> Option<u32> {
     // Match-on-trimmed: some ESRI WKTs use underscores instead of spaces.
-    let normalized = name
-        .trim()
-        .replace('_', " ")
-        .to_ascii_uppercase();
+    let normalized = name.trim().replace('_', " ").to_ascii_uppercase();
     Some(match normalized.as_str() {
         // GDA2020 (Australia)
         "GDA2020" | "GCS GDA 2020" | "GDA 2020" => 7844,
@@ -125,19 +121,15 @@ fn epsg_for_common_name(name: &str) -> Option<u32> {
         // NAD27
         "NAD27" | "NAD 27" | "GCS NORTH AMERICAN 1927" => 4267,
         // Web Mercator (the projection web maps use)
-        "WGS 84 / PSEUDO-MERCATOR"
-        | "WGS 1984 WEB MERCATOR AUXILIARY SPHERE"
-        | "WEB MERCATOR" => 3857,
+        "WGS 84 / PSEUDO-MERCATOR" | "WGS 1984 WEB MERCATOR AUXILIARY SPHERE" | "WEB MERCATOR" => {
+            3857
+        }
         // British National Grid
-        "OSGB 1936 / BRITISH NATIONAL GRID" | "BRITISH NATIONAL GRID" | "OSGB36 / BRITISH NATIONAL GRID" => 27700,
+        "OSGB 1936 / BRITISH NATIONAL GRID"
+        | "BRITISH NATIONAL GRID"
+        | "OSGB36 / BRITISH NATIONAL GRID" => 27700,
         _ => return None,
     })
-}
-
-impl Default for Crs {
-    fn default() -> Self {
-        Crs::Unknown
-    }
 }
 
 #[cfg(test)]

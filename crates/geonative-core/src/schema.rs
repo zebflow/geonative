@@ -141,9 +141,7 @@ impl Schema {
 
 impl PartialEq for Schema {
     fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields
-            && self.geometry == other.geometry
-            && self.crs == other.crs
+        self.fields == other.fields && self.geometry == other.geometry && self.crs == other.crs
     }
 }
 
@@ -175,14 +173,17 @@ mod tests {
     #[test]
     fn validate_row_happy_path() {
         let s = sample();
-        s.validate_row(&[Value::Int64(1), Value::String("a".into())]).unwrap();
+        s.validate_row(&[Value::Int64(1), Value::String("a".into())])
+            .unwrap();
         s.validate_row(&[Value::Int64(1), Value::Null]).unwrap();
     }
 
     #[test]
     fn validate_row_rejects_null_in_non_nullable() {
         let s = sample();
-        assert!(s.validate_row(&[Value::Null, Value::String("a".into())]).is_err());
+        assert!(s
+            .validate_row(&[Value::Null, Value::String("a".into())])
+            .is_err());
     }
 
     #[test]
@@ -194,6 +195,8 @@ mod tests {
     #[test]
     fn validate_row_rejects_type_mismatch() {
         let s = sample();
-        assert!(s.validate_row(&[Value::String("nope".into()), Value::Null]).is_err());
+        assert!(s
+            .validate_row(&[Value::String("nope".into()), Value::Null])
+            .is_err());
     }
 }

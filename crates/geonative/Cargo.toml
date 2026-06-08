@@ -1,7 +1,9 @@
 [package]
 name = "geonative"
 description = "Lightweight pure-Rust geospatial library. Zero default features — opt in to file formats, processing, and conversion via Cargo features."
-version.workspace = true
+# Meta crate stays at 0.0.1 until feature-flag re-exports are wired in a
+# future release.
+version = "0.0.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

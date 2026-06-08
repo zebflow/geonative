@@ -154,7 +154,13 @@ mod tests {
             physical_filename: "a00000009.gdbtable".into(),
         };
         let dir = Path::new("/data/My.gdb");
-        assert_eq!(li.table_path(dir), Path::new("/data/My.gdb/a00000009.gdbtable"));
-        assert_eq!(li.tablx_path(dir), Path::new("/data/My.gdb/a00000009.gdbtablx"));
+        assert_eq!(
+            li.table_path(dir),
+            Path::new("/data/My.gdb/a00000009.gdbtable")
+        );
+        assert_eq!(
+            li.tablx_path(dir),
+            Path::new("/data/My.gdb/a00000009.gdbtablx")
+        );
     }
 }

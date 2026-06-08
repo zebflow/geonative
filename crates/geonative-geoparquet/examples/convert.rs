@@ -10,7 +10,10 @@ use geonative_geoparquet::{GeoParquetWriter, WriterOptions};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 4 {
-        eprintln!("usage: {} <input.gdb> <layer-name> <output.parquet>", args[0]);
+        eprintln!(
+            "usage: {} <input.gdb> <layer-name> <output.parquet>",
+            args[0]
+        );
         std::process::exit(2);
     }
     let gdb_path = &args[1];

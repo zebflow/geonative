@@ -1,0 +1,85 @@
+name: release
+
+# Tag-driven publish. Tag the repo with `v<semver>` (e.g. `v0.1.0`) to
+# trigger a release. The workflow validates the workspace, then publishes the
+# implemented crates to crates.io in dependency order, then creates a GitHub
+# Release.
+#
+# Required secret: `CARGO_REGISTRY_TOKEN` (a token scoped to your crates.io
+# account — settings → API Tokens → "Publish a new crate (with name)").
+#
+# Workflow design notes:
+# - Crates publish strictly in dep order. Each step waits for the previous
+#   crate to be queryable on the crates.io index before publishing the next
+#   (avoids the classic "version not found" race).
+# - Placeholder crates (geonative-shapefile, -geojson, -processing, -convert,
+#   and the meta `geonative`) are pinned at 0.0.1 in their own Cargo.toml and
+#   intentionally NOT published here. They'll be added to this matrix when
+#   their implementations land.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: validate (test + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-features
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  publish:
+    name: publish to crates.io
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Publish geonative-core
+        run: cargo publish -p geonative-core --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish geonative-filegdb
+        run: cargo publish -p geonative-filegdb --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish geonative-geoparquet
+        run: cargo publish -p geonative-geoparquet --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish geonative-cli
+        run: cargo publish -p geonative-cli --no-verify
+
+  github-release:
+    name: GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

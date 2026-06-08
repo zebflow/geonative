@@ -13,6 +13,6 @@ keywords.workspace = true
 readme = "README.md"
 
 [dependencies]
-geonative-core = { version = "0.0.1", path = "../geonative-core" }
+geonative-core = { workspace = true }
 thiserror = "2"
 memmap2 = "0.9"

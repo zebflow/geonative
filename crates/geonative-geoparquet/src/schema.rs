@@ -194,8 +194,14 @@ mod tests {
         assert_eq!(arrow_type_for(ValueType::Int16).unwrap(), DataType::Int16);
         assert_eq!(arrow_type_for(ValueType::Int32).unwrap(), DataType::Int32);
         assert_eq!(arrow_type_for(ValueType::Int64).unwrap(), DataType::Int64);
-        assert_eq!(arrow_type_for(ValueType::Float32).unwrap(), DataType::Float32);
-        assert_eq!(arrow_type_for(ValueType::Float64).unwrap(), DataType::Float64);
+        assert_eq!(
+            arrow_type_for(ValueType::Float32).unwrap(),
+            DataType::Float32
+        );
+        assert_eq!(
+            arrow_type_for(ValueType::Float64).unwrap(),
+            DataType::Float64
+        );
         assert_eq!(arrow_type_for(ValueType::String).unwrap(), DataType::Utf8);
         assert_eq!(arrow_type_for(ValueType::Binary).unwrap(), DataType::Binary);
         assert_eq!(

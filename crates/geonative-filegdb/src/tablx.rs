@@ -51,7 +51,11 @@ pub fn parse_tablx_header(r: &mut LeReader) -> Result<TablxHeader> {
     let version = match version_raw {
         3 => TablxVersion::V3,
         4 => TablxVersion::V4,
-        v => return Err(GdbError::malformed(format!("unknown .gdbtablx version {v}"))),
+        v => {
+            return Err(GdbError::malformed(format!(
+                "unknown .gdbtablx version {v}"
+            )))
+        }
     };
 
     let (n_1024_blocks_present, total_record_count, offset_size) = match version {
@@ -129,9 +133,7 @@ impl Tablx {
         let mut bits_for_block_map: u32 = 0;
         if header.n_1024_blocks_present > 0 {
             if r.remaining() < 16 {
-                return Err(GdbError::malformed(
-                    ".gdbtablx truncated: missing trailer",
-                ));
+                return Err(GdbError::malformed(".gdbtablx truncated: missing trailer"));
             }
             let n_bitmap_int32_words = r.read_u32()?;
             let n_bits_for_block_map = r.read_u32()?;
@@ -201,11 +203,8 @@ impl Tablx {
             if map.get(byte_pos).copied().unwrap_or(0) & (1u8 << bit_in_byte) == 0 {
                 return None;
             }
-            // popcount of bits BEFORE block_idx
-            let mut popcount: u32 = 0;
-            for i in 0..byte_pos {
-                popcount += map[i].count_ones();
-            }
+            // popcount of bits BEFORE block_idx (whole bytes + partial last byte)
+            let mut popcount: u32 = map.iter().take(byte_pos).map(|b| b.count_ones()).sum();
             // partial byte
             let partial = map[byte_pos] & ((1u8 << bit_in_byte) - 1);
             popcount += partial.count_ones();

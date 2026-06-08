@@ -17,7 +17,11 @@ pub struct Feature {
 
 impl Feature {
     pub fn new(fid: Option<i64>, geometry: Option<Geometry>, attributes: Vec<Value>) -> Self {
-        Self { fid, geometry, attributes }
+        Self {
+            fid,
+            geometry,
+            attributes,
+        }
     }
 
     pub fn attribute(&self, idx: usize) -> Option<&Value> {

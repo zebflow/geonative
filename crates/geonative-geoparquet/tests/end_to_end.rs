@@ -44,11 +44,7 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
 
     let file_size = std::fs::metadata(&out_path).unwrap().len();
     assert!(file_size > 0);
-    println!(
-        "wrote {} ({} bytes)",
-        out_path.display(),
-        file_size
-    );
+    println!("wrote {} ({} bytes)", out_path.display(), file_size);
 
     // Read back with the parquet crate.
     let file = std::fs::File::open(&out_path).unwrap();
@@ -66,9 +62,18 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
         .expect("`geo` key not found in parquet metadata");
     assert!(geo.contains(r#""version":"1.1.0""#), "geo: {geo}");
     assert!(geo.contains(r#""encoding":"WKB""#), "geo: {geo}");
-    assert!(geo.contains(r#""geometry_types":["MultiLineString"]"#), "geo: {geo}");
-    assert!(geo.contains(r#""code":7844"#), "EPSG:7844 missing from PROJJSON: {geo}");
-    assert!(geo.contains(r#""covering""#), "bbox covering missing: {geo}");
+    assert!(
+        geo.contains(r#""geometry_types":["MultiLineString"]"#),
+        "geo: {geo}"
+    );
+    assert!(
+        geo.contains(r#""code":7844"#),
+        "EPSG:7844 missing from PROJJSON: {geo}"
+    );
+    assert!(
+        geo.contains(r#""covering""#),
+        "bbox covering missing: {geo}"
+    );
 
     // 2) Read all record batches, verify row count and column shape.
     let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
@@ -83,8 +88,15 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
     assert_eq!(total_rows, 75, "expected 75 features from FOI_LINE");
 
     // Geometry column present and 0-th.
-    let names: Vec<&str> = arrow_schema.fields().iter().map(|f| f.name().as_str()).collect();
-    assert_eq!(names[0], "SHAPE", "geometry column should be SHAPE per source");
+    let names: Vec<&str> = arrow_schema
+        .fields()
+        .iter()
+        .map(|f| f.name().as_str())
+        .collect();
+    assert_eq!(
+        names[0], "SHAPE",
+        "geometry column should be SHAPE per source"
+    );
     assert!(names.contains(&"UFI"));
     assert!(names.contains(&"NAME"));
     assert!(names.contains(&"xmin") && names.contains(&"xmax"));
@@ -115,7 +127,10 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
         .downcast_ref::<BinaryArray>()
         .unwrap();
     let wkb = geom_col.value(0);
-    assert!(wkb.len() > 100, "WKB should be substantial for a multi-part line");
+    assert!(
+        wkb.len() > 100,
+        "WKB should be substantial for a multi-part line"
+    );
     // Byte 0 = byte_order (1 = LE), bytes 1..5 = geometry type.
     assert_eq!(wkb[0], 1, "WKB byte order should be LE");
     let geom_type = u32::from_le_bytes(wkb[1..5].try_into().unwrap());
@@ -127,10 +142,30 @@ fn vmfeat_gdb_round_trips_through_geoparquet() {
     let ymin_idx = arrow_schema.index_of("ymin").unwrap();
     let ymax_idx = arrow_schema.index_of("ymax").unwrap();
     use arrow::array::Float64Array;
-    let xmin = first_batch.column(xmin_idx).as_any().downcast_ref::<Float64Array>().unwrap().value(0);
-    let xmax = first_batch.column(xmax_idx).as_any().downcast_ref::<Float64Array>().unwrap().value(0);
-    let ymin = first_batch.column(ymin_idx).as_any().downcast_ref::<Float64Array>().unwrap().value(0);
-    let ymax = first_batch.column(ymax_idx).as_any().downcast_ref::<Float64Array>().unwrap().value(0);
+    let xmin = first_batch
+        .column(xmin_idx)
+        .as_any()
+        .downcast_ref::<Float64Array>()
+        .unwrap()
+        .value(0);
+    let xmax = first_batch
+        .column(xmax_idx)
+        .as_any()
+        .downcast_ref::<Float64Array>()
+        .unwrap()
+        .value(0);
+    let ymin = first_batch
+        .column(ymin_idx)
+        .as_any()
+        .downcast_ref::<Float64Array>()
+        .unwrap()
+        .value(0);
+    let ymax = first_batch
+        .column(ymax_idx)
+        .as_any()
+        .downcast_ref::<Float64Array>()
+        .unwrap()
+        .value(0);
     assert!(xmin >= 144.0 && xmax <= 147.0, "lon bbox: {xmin}..{xmax}");
     assert!(ymin >= -39.0 && ymax <= -36.0, "lat bbox: {ymin}..{ymax}");
 
@@ -157,10 +192,8 @@ fn wkb_decoder_round_trips_via_parquet() {
     let schema = layer.schema().clone();
 
     // Collect the original geometries from the GDB.
-    let originals: Vec<geonative_core::Geometry> = layer
-        .read()
-        .map(|f| f.unwrap().geometry.unwrap())
-        .collect();
+    let originals: Vec<geonative_core::Geometry> =
+        layer.read().map(|f| f.unwrap().geometry.unwrap()).collect();
     assert_eq!(originals.len(), 75);
 
     // Write to a parquet (no Hilbert sort, so order is preserved).
@@ -218,10 +251,7 @@ fn full_round_trip_via_geoparquet_reader() {
     let schema = layer.schema().clone();
 
     // Capture originals before consuming the layer twice.
-    let originals: Vec<geonative_core::Feature> = layer
-        .read()
-        .map(|f| f.unwrap())
-        .collect();
+    let originals: Vec<geonative_core::Feature> = layer.read().map(|f| f.unwrap()).collect();
 
     let tmpdir = tempfile::tempdir().unwrap();
     let path = tmpdir.path().join("foi.parquet");
@@ -307,8 +337,7 @@ fn hilbert_sort_reduces_row_group_bbox_spread() {
 
     for (path, hilbert) in [(&unsorted, false), (&sorted, true)] {
         let file = std::fs::File::create(path).unwrap();
-        let mut w =
-            GeoParquetWriter::create(file, &schema, small_batch_opts(hilbert)).unwrap();
+        let mut w = GeoParquetWriter::create(file, &schema, small_batch_opts(hilbert)).unwrap();
         for f in layer.read() {
             w.write(&f.unwrap()).unwrap();
         }
@@ -355,7 +384,10 @@ fn hilbert_sort_reduces_row_group_bbox_spread() {
                 }
             }
         }
-        assert!(n_groups >= 2, "test requires ≥ 2 row groups; got {n_groups}");
+        assert!(
+            n_groups >= 2,
+            "test requires ≥ 2 row groups; got {n_groups}"
+        );
         total_spread / n_groups as f64
     };
 

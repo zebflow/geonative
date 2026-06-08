@@ -3,7 +3,11 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.0.1"
+# Implemented crates use this version (geonative-core, geonative-filegdb,
+# geonative-geoparquet, geonative-cli). Placeholder-only crates override with
+# `version = "0.0.1"` in their own [package] table so we don't publish empty
+# 0.1.0 shells.
+version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/zebflow/geonative"
@@ -12,3 +16,11 @@ authors = ["Zebflow <hello@zebflow.com>"]
 rust-version = "1.74"
 categories = ["science::geo"]
 keywords = ["geospatial", "gis", "geo"]
+
+# Centralized inter-crate dependencies. Each crate references these via
+# `geonative-core = { workspace = true }` so the version + path live in one
+# place and stay in sync.
+[workspace.dependencies]
+geonative-core = { version = "0.1.0", path = "crates/geonative-core" }
+geonative-filegdb = { version = "0.1.0", path = "crates/geonative-filegdb" }
+geonative-geoparquet = { version = "0.1.0", path = "crates/geonative-geoparquet" }

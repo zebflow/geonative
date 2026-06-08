@@ -47,7 +47,9 @@ pub fn quantize(
     }
     let width = bbox[2] - bbox[0];
     let height = bbox[3] - bbox[1];
-    if !(width > 0.0) || !(height > 0.0) {
+    // Reject degenerate bboxes (zero or negative width/height) AND NaN values.
+    // Plain `<= 0.0` would mishandle NaN, so we check positivity explicitly.
+    if width.is_nan() || height.is_nan() || width <= 0.0 || height <= 0.0 {
         return None;
     }
     let grid = (1u64 << order) - 1; // max index
@@ -165,10 +167,7 @@ mod tests {
 
     #[test]
     fn union_bbox_skips_non_finite() {
-        let bboxes = vec![
-            [0.0, 0.0, 1.0, 1.0],
-            [f64::NAN, 0.0, 1.0, 1.0],
-        ];
+        let bboxes = vec![[0.0, 0.0, 1.0, 1.0], [f64::NAN, 0.0, 1.0, 1.0]];
         let u = union_bbox(bboxes).unwrap();
         assert_eq!(u, [0.0, 0.0, 1.0, 1.0]);
     }

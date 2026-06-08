@@ -151,11 +151,7 @@ impl RecordBatchBuilder {
             ]
         });
 
-        let field_names = core_schema
-            .fields
-            .iter()
-            .map(|f| f.name.clone())
-            .collect();
+        let field_names = core_schema.fields.iter().map(|f| f.name.clone()).collect();
 
         Ok(Self {
             arrow_schema: mapped.arrow.clone(),

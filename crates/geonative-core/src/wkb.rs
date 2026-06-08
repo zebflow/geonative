@@ -99,12 +99,16 @@ fn count_coords(g: &Geometry) -> usize {
     match g {
         Geometry::Point(_) => 1,
         Geometry::LineString(ls) => ls.coords.len(),
-        Geometry::Polygon(p) => p.exterior.coords.len() + p.holes.iter().map(|h| h.coords.len()).sum::<usize>(),
+        Geometry::Polygon(p) => {
+            p.exterior.coords.len() + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
+        }
         Geometry::MultiPoint(v) => v.len(),
         Geometry::MultiLineString(v) => v.iter().map(|ls| ls.coords.len()).sum(),
         Geometry::MultiPolygon(v) => v
             .iter()
-            .map(|p| p.exterior.coords.len() + p.holes.iter().map(|h| h.coords.len()).sum::<usize>())
+            .map(|p| {
+                p.exterior.coords.len() + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
+            })
             .sum(),
         Geometry::GeometryCollection(v) => v.iter().map(count_coords).sum(),
         Geometry::Empty(_) => 0,
@@ -280,10 +284,18 @@ impl BboxAcc {
             self.xmax = x;
             self.ymax = y;
         } else {
-            if x < self.xmin { self.xmin = x; }
-            if y < self.ymin { self.ymin = y; }
-            if x > self.xmax { self.xmax = x; }
-            if y > self.ymax { self.ymax = y; }
+            if x < self.xmin {
+                self.xmin = x;
+            }
+            if y < self.ymin {
+                self.ymin = y;
+            }
+            if x > self.xmax {
+                self.xmax = x;
+            }
+            if y > self.ymax {
+                self.ymax = y;
+            }
         }
     }
 
@@ -360,7 +372,11 @@ impl<'a> WkbCursor<'a> {
         let le = match bo {
             0 => false,
             1 => true,
-            other => return Err(Error::malformed(format!("WKB byte-order byte {other}; expected 0 or 1"))),
+            other => {
+                return Err(Error::malformed(format!(
+                    "WKB byte-order byte {other}; expected 0 or 1"
+                )))
+            }
         };
         let raw_type = self.read_u32(le)?;
         // Detect Z/M via either the ISO high bits or the extended 1000-series codes.
@@ -395,7 +411,9 @@ fn decode_geometry(c: &mut WkbCursor) -> Result<Geometry> {
         5 => decode_multilinestring(c, le),
         6 => decode_multipolygon(c, le),
         7 => decode_collection(c, le),
-        other => Err(Error::unsupported(format!("WKB geometry type code {other}"))),
+        other => Err(Error::unsupported(format!(
+            "WKB geometry type code {other}"
+        ))),
     }
 }
 
@@ -552,13 +570,17 @@ fn walk_bbox(c: &mut WkbCursor, acc: &mut BboxAcc) -> Result<()> {
                 walk_xy_array(c, le, acc)?;
             }
         }
-        4 | 5 | 6 | 7 => {
+        4..=7 => {
             let n = c.read_u32(le)? as usize;
             for _ in 0..n {
                 walk_bbox(c, acc)?;
             }
         }
-        other => return Err(Error::unsupported(format!("WKB geometry type code {other}"))),
+        other => {
+            return Err(Error::unsupported(format!(
+                "WKB geometry type code {other}"
+            )))
+        }
     }
     Ok(())
 }
@@ -716,7 +738,7 @@ mod decoder_tests {
         buf.push(1u8);
         buf.extend_from_slice(&7u32.to_le_bytes()); // collection
         buf.extend_from_slice(&2u32.to_le_bytes()); // 2 children
-        // BE point (1.0, 2.0)
+                                                    // BE point (1.0, 2.0)
         buf.push(0u8);
         buf.extend_from_slice(&1u32.to_be_bytes());
         buf.extend_from_slice(&1.0f64.to_be_bytes());
@@ -862,7 +884,11 @@ mod tests {
 
     #[test]
     fn linestring_wkb_layout() {
-        let ls = LineString::new(vec![Coord::xy(0.0, 0.0), Coord::xy(1.0, 1.0), Coord::xy(2.0, 0.0)]);
+        let ls = LineString::new(vec![
+            Coord::xy(0.0, 0.0),
+            Coord::xy(1.0, 1.0),
+            Coord::xy(2.0, 0.0),
+        ]);
         let wkb = Geometry::LineString(ls).to_wkb();
         // 5 (preamble) + 4 (npts) + 3*16 = 57
         assert_eq!(wkb.len(), 57);
@@ -900,7 +926,7 @@ mod tests {
         assert_eq!(u32::from_le_bytes(wkb[1..5].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(wkb[5..9].try_into().unwrap()), 2); // 2 rings
         assert_eq!(u32::from_le_bytes(wkb[9..13].try_into().unwrap()), 5); // ring0: 5 pts
-        // ring1 count follows ring0's 5 coords (80 bytes), at offset 13 + 80 = 93
+                                                                           // ring1 count follows ring0's 5 coords (80 bytes), at offset 13 + 80 = 93
         assert_eq!(u32::from_le_bytes(wkb[93..97].try_into().unwrap()), 5);
     }
 
@@ -921,7 +947,11 @@ mod tests {
     fn multilinestring_wkb_layout() {
         let g = Geometry::MultiLineString(vec![
             LineString::new(vec![Coord::xy(0.0, 0.0), Coord::xy(1.0, 1.0)]),
-            LineString::new(vec![Coord::xy(2.0, 2.0), Coord::xy(3.0, 3.0), Coord::xy(4.0, 4.0)]),
+            LineString::new(vec![
+                Coord::xy(2.0, 2.0),
+                Coord::xy(3.0, 3.0),
+                Coord::xy(4.0, 4.0),
+            ]),
         ]);
         let wkb = g.to_wkb();
         assert_eq!(wkb[0], 1);
@@ -961,7 +991,10 @@ mod tests {
     fn geometry_collection_nests_correctly() {
         let g = Geometry::GeometryCollection(vec![
             Geometry::Point(Coord::xy(1.0, 2.0)),
-            Geometry::LineString(LineString::new(vec![Coord::xy(0.0, 0.0), Coord::xy(1.0, 1.0)])),
+            Geometry::LineString(LineString::new(vec![
+                Coord::xy(0.0, 0.0),
+                Coord::xy(1.0, 1.0),
+            ])),
         ]);
         let wkb = g.to_wkb();
         assert_eq!(u32::from_le_bytes(wkb[1..5].try_into().unwrap()), 7);
@@ -969,7 +1002,7 @@ mod tests {
         // First inner geom (point) at offset 9
         assert_eq!(wkb[9], 1);
         assert_eq!(u32::from_le_bytes(wkb[10..14].try_into().unwrap()), 1); // point
-        // Second inner geom (linestring) starts at 9 + 21 = 30
+                                                                            // Second inner geom (linestring) starts at 9 + 21 = 30
         assert_eq!(wkb[30], 1);
         assert_eq!(u32::from_le_bytes(wkb[31..35].try_into().unwrap()), 2); // linestring
     }

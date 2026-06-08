@@ -77,18 +77,16 @@ pub struct Layer {
 impl Layer {
     fn open(dir: &Path, info: &LayerInfo) -> Result<Self> {
         let table_path = info.table_path(dir);
-        let table_file = std::fs::File::open(&table_path).map_err(|e| {
-            GdbError::malformed(format!("opening {}: {e}", table_path.display()))
-        })?;
+        let table_file = std::fs::File::open(&table_path)
+            .map_err(|e| GdbError::malformed(format!("opening {}: {e}", table_path.display())))?;
         // SAFETY: standard mmap caveats — if the file is truncated or modified
         // by another process while mapped, accessing bytes may SIGBUS. We use
         // this read-only on local disk for a process-private view; that's the
         // canonical safe scenario for `memmap2::Mmap::map`.
         #[allow(unsafe_code)]
         let mmap = unsafe {
-            Mmap::map(&table_file).map_err(|e| {
-                GdbError::malformed(format!("mmap {}: {e}", table_path.display()))
-            })?
+            Mmap::map(&table_file)
+                .map_err(|e| GdbError::malformed(format!("mmap {}: {e}", table_path.display())))?
         };
         let tablx_bytes = std::fs::read(info.tablx_path(dir))?;
 
@@ -253,11 +251,7 @@ fn layer_geometry_type(flags: &LayerFlags) -> GeometryType {
     }
 }
 
-fn extent_array_from_meta(
-    xy: [f64; 4],
-    z: Option<[f64; 2]>,
-    _m: Option<[f64; 2]>,
-) -> [f64; 6] {
+fn extent_array_from_meta(xy: [f64; 4], z: Option<[f64; 2]>, _m: Option<[f64; 2]>) -> [f64; 6] {
     let (zmin, zmax) = z.map(|z| (z[0], z[1])).unwrap_or((f64::NAN, f64::NAN));
     [xy[0], xy[1], zmin, xy[2], xy[3], zmax]
 }
