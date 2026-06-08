@@ -177,10 +177,28 @@ The raster IR mirrors the vector IR, sharing `Crs` / `Error` / `Coord` / `Geomet
 
 Cross-modal ops (clip raster by polygon, rasterize features, vectorize raster) want both IRs in scope — that's why both belong in `core`. Optionally feature-gate `core` so vector-only consumers don't compile raster types.
 
+**The quick-big-win path (~1 week, do this first):**
+
+**`core::raster::*` + `geonative-geotiff` with COG support.** COG is the Pi-killer format and the highest-leverage thing to ship first because:
+
+- It's the de-facto standard everyone (USGS / NASA / ESA / Sentinel / Maxar) outputs now
+- A multi-TB COG serves 256×256 tiles from a Pi via mmap at ~200 KB I/O per tile, ~10 MB peak RAM regardless of source size — same OS-page-cache philosophy as our `.gdbtable` reader
+- It's still a valid GeoTIFF, so the same crate covers both "normal" and "cloud optimised" inputs — COG is just a feature flag for the byte-range + pyramid traversal logic, not a separate format
+- LZW + DEFLATE decode at hundreds of MB/s on a Pi 4 — never the bottleneck
+- Everything else (PMTiles cache, PNG tile encoder, tile server) layers on top once this exists
+
+Ship order for the quick win:
+1. `core::raster::*` module — type definitions, ~1 day
+2. `geonative-geotiff` v0.1 reader — TIFF format + LZW/DEFLATE/PackBits + GeoKey CRS, mmap-backed, ~5 days
+3. `cog` feature flag — byte-range IFD traversal + pyramid-level lookups, ~2 days
+4. (optional, ~1 day) PNG tile encoder so we can demo "serve tiles off a multi-GB COG on a Pi"
+
+After that, the warp / resample / pyramid_build / clip_by_polygon ops are incremental.
+
 **Plan:**
 
 - [ ] **`core::raster::*` module** — `RasterTile`, `Band`, `PixelType`, `GeoTransform`, `BandDescriptor`, `RasterLayer` trait. Behind optional `raster` feature on `geonative-core`. ~1 day.
-- [ ] **`geonative-geotiff` v0.1 reader** — pure-Rust TIFF decoder (BigTIFF support, LZW + DEFLATE + PackBits codecs), mmap-backed, GeoKey directory parsing for CRS. Implements `core::raster::RasterLayer`. ~5 days.
+- [ ] **`geonative-geotiff` v0.1 reader** (quick big win, see above) — pure-Rust TIFF decoder (BigTIFF support, LZW + DEFLATE + PackBits codecs), mmap-backed, GeoKey directory parsing for CRS. Implements `core::raster::RasterLayer`. ~5 days.
 - [ ] **COG support via `cog` feature flag on `geonative-geotiff`** (NOT a sibling crate — COG is a strict profile of GeoTIFF, not a different format). Byte-range reads + IFD-per-pyramid-level lookups so multi-TB COGs work on a Raspberry Pi. ~2 days.
 - [ ] **`geonative-mbtiles` v0.1** — SQLite-backed XYZ tile container. Pulls `rusqlite` (heavy dep, deserves own crate). Read + write for raster pyramids; future v0.2 adds vector MVT tiles in the same container. ~3 days.
 - [ ] **`processing::raster::*` operations**:
