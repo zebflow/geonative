@@ -1,11 +1,21 @@
-//! Format-polymorphic I/O dispatch for the CLI.
+//! Format-polymorphic I/O dispatch. The two entry points here — [`Source`]
+//! and [`Sink`] — are the foundation every higher-level operation in this
+//! crate (convert, filter_bbox, inspect, metadata) is built on.
 //!
-//! `Source` opens any supported input (`.gdb` / `.shp` / `.parquet` /
-//! `.geojson`) and exposes a uniform `for_each(Feature)` over its rows.
-//! `Sink` writes to any supported output (`.parquet` / `.geojson`).
+//! Downstream services use these directly when the canned operations don't
+//! quite fit:
 //!
-//! Subcommands stay short: pick the right `Source`, run their per-feature
-//! logic in the callback, write through a `Sink`.
+//! ```no_run
+//! use geonative_convert::{Source, Sink, SinkOptions};
+//! use std::path::Path;
+//!
+//! let source = Source::open(Path::new("in.gdb"), Some("roads"))?;
+//! let schema = source.schema_cloned()?;
+//! let mut sink = Sink::create(Path::new("out.parquet"), &schema, SinkOptions::default())?;
+//! source.for_each(|feat| sink.write(&feat))?;
+//! sink.close()?;
+//! # Ok::<(), geonative_convert::ConvertError>(())
+//! ```
 
 use std::io::BufWriter;
 use std::path::Path;
@@ -16,8 +26,9 @@ use geonative_geojson::{GeoJsonReader, GeoJsonWriter};
 use geonative_geoparquet::{GeoParquetReader, GeoParquetWriter, WriterOptions};
 use geonative_shapefile::Shapefile;
 
-/// What kind of file a path refers to. `Detect::from_path` parses the
-/// extension; everything else routes off the result.
+use crate::error::{ConvertError, Result};
+
+/// What kind of file a path refers to. Parsed from the extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     FileGdb,
@@ -27,25 +38,22 @@ pub enum Format {
 }
 
 impl Format {
-    pub fn from_path(path: &Path) -> Result<Self, String> {
+    pub fn from_path(path: &Path) -> Result<Self> {
         let ext = path
             .extension()
             .and_then(|s| s.to_str())
             .map(str::to_ascii_lowercase)
-            .ok_or_else(|| {
-                format!(
-                    "could not determine format from path: {} (extension required)",
-                    path.display()
-                )
-            })?;
+            .ok_or_else(|| ConvertError::UnknownFormat(path.display().to_string()))?;
         match ext.as_str() {
             "gdb" => Ok(Self::FileGdb),
             "shp" => Ok(Self::Shapefile),
             "parquet" => Ok(Self::GeoParquet),
             "geojson" | "json" => Ok(Self::GeoJson),
-            other => Err(format!(
-                "unsupported extension '.{other}' (supported: .gdb, .shp, .parquet, .geojson)"
-            )),
+            other => Err(ConvertError::UnsupportedFormat {
+                ext: other.to_string(),
+                path: path.display().to_string(),
+                supported: ".gdb, .shp, .parquet, .geojson",
+            }),
         }
     }
 
@@ -85,50 +93,49 @@ impl std::fmt::Debug for Source {
 impl Source {
     /// Open `path`. If the format is multi-layer (FileGDB), `layer_hint`
     /// selects the layer; passing `None` against a multi-layer GDB returns
-    /// an error listing the available layer names.
-    pub fn open(path: &Path, layer_hint: Option<&str>) -> Result<Self, String> {
+    /// [`ConvertError::LayerAmbiguous`] listing available names.
+    pub fn open(path: &Path, layer_hint: Option<&str>) -> Result<Self> {
         match Format::from_path(path)? {
             Format::FileGdb => {
-                let gdb = geonative_filegdb::open(path)
-                    .map_err(|e| format!("opening {}: {e}", path.display()))?;
+                let gdb = geonative_filegdb::open(path)?;
                 let layer_name = match (layer_hint, gdb.layers()) {
                     (Some(name), _) => name.to_string(),
                     (None, [single]) => single.name.clone(),
                     (None, many) => {
-                        return Err(format!(
-                            "input has {} layers; specify which with --layer NAME. Available: {}",
-                            many.len(),
-                            many.iter()
+                        return Err(ConvertError::LayerAmbiguous {
+                            count: many.len(),
+                            available: many
+                                .iter()
                                 .map(|l| l.name.as_str())
                                 .collect::<Vec<_>>()
-                                .join(", ")
-                        ))
+                                .join(", "),
+                        })
                     }
                 };
                 Ok(Source::FileGdb { gdb, layer_name })
             }
-            Format::Shapefile => geonative_shapefile::open(path)
-                .map(Source::Shapefile)
-                .map_err(|e| format!("opening {}: {e}", path.display())),
-            Format::GeoParquet => GeoParquetReader::open(path)
-                .map(Source::GeoParquet)
-                .map_err(|e| format!("opening {}: {e}", path.display())),
-            Format::GeoJson => GeoJsonReader::open(path)
-                .map(Source::GeoJson)
-                .map_err(|e| format!("opening {}: {e}", path.display())),
+            Format::Shapefile => Ok(Source::Shapefile(geonative_shapefile::open(path)?)),
+            Format::GeoParquet => Ok(Source::GeoParquet(GeoParquetReader::open(path)?)),
+            Format::GeoJson => Ok(Source::GeoJson(GeoJsonReader::open(path)?)),
         }
     }
 
-/// Return an owned schema. FileGDB has to briefly open the layer to fetch
-    /// it; the others have it sitting on the reader handle. Returning an owned
-    /// value sidesteps the lifetime gymnastics of FileGDB's borrow-shaped
-    /// `Layer::schema()` API.
-    pub fn schema_cloned(&self) -> Result<Schema, String> {
+    pub fn format(&self) -> Format {
+        match self {
+            Source::FileGdb { .. } => Format::FileGdb,
+            Source::Shapefile(_) => Format::Shapefile,
+            Source::GeoParquet(_) => Format::GeoParquet,
+            Source::GeoJson(_) => Format::GeoJson,
+        }
+    }
+
+    /// Return an owned schema. FileGDB has to briefly open the layer to
+    /// fetch it; the others have it on the reader handle. Returning an
+    /// owned value sidesteps the lifetime gymnastics of `Layer::schema()`.
+    pub fn schema_cloned(&self) -> Result<Schema> {
         match self {
             Source::FileGdb { gdb, layer_name } => {
-                let layer = gdb
-                    .layer(layer_name)
-                    .map_err(|e| format!("opening layer '{layer_name}': {e}"))?;
+                let layer = gdb.layer(layer_name)?;
                 Ok(layer.schema().clone())
             }
             Source::Shapefile(s) => Ok(s.schema().clone()),
@@ -137,47 +144,54 @@ impl Source {
         }
     }
 
+    /// Cheap feature count if the format exposes one without scanning.
+    /// `None` for GeoParquet (no per-row-group sum exposed yet on the reader).
     pub fn feature_count(&self) -> Option<i64> {
         match self {
-            Source::FileGdb { gdb, layer_name } => gdb
-                .layer(layer_name)
-                .ok()
-                .map(|l| l.feature_count()),
+            Source::FileGdb { gdb, layer_name } => {
+                gdb.layer(layer_name).ok().map(|l| l.feature_count())
+            }
             Source::Shapefile(s) => Some(s.feature_count() as i64),
-            // GeoParquetReader doesn't yet expose a cheap row-count.
             Source::GeoParquet(_) => None,
             Source::GeoJson(r) => Some(r.feature_count() as i64),
         }
     }
 
     /// Stream all features through `on_each`. Per-feature decode errors are
-    /// converted to strings and returned via `?` — the underlying reader is
-    /// consumed on success.
-    pub fn for_each<F>(self, mut on_each: F) -> Result<(), String>
+    /// wrapped in [`ConvertError::DecodeRow`] with the row index attached.
+    /// The reader is consumed on success.
+    pub fn for_each<F>(self, mut on_each: F) -> Result<()>
     where
-        F: FnMut(Feature) -> Result<(), String>,
+        F: FnMut(Feature) -> Result<()>,
     {
         match self {
             Source::FileGdb { gdb, layer_name } => {
-                let layer = gdb
-                    .layer(&layer_name)
-                    .map_err(|e| format!("opening layer '{layer_name}': {e}"))?;
+                let layer = gdb.layer(&layer_name)?;
                 for (i, feat) in layer.read().enumerate() {
-                    let feat = feat.map_err(|e| format!("decoding feature {i}: {e}"))?;
+                    let feat = feat.map_err(|e| ConvertError::DecodeRow {
+                        row: i as u64,
+                        source: Box::new(ConvertError::FileGdb(e)),
+                    })?;
                     on_each(feat)?;
                 }
                 Ok(())
             }
             Source::Shapefile(s) => {
                 for (i, feat) in s.read().enumerate() {
-                    let feat = feat.map_err(|e| format!("decoding feature {i}: {e}"))?;
+                    let feat = feat.map_err(|e| ConvertError::DecodeRow {
+                        row: i as u64,
+                        source: Box::new(ConvertError::Shapefile(e)),
+                    })?;
                     on_each(feat)?;
                 }
                 Ok(())
             }
             Source::GeoParquet(r) => {
                 for (i, feat) in r.into_features().enumerate() {
-                    let feat = feat.map_err(|e| format!("decoding feature {i}: {e}"))?;
+                    let feat = feat.map_err(|e| ConvertError::DecodeRow {
+                        row: i as u64,
+                        source: Box::new(ConvertError::GeoParquet(e)),
+                    })?;
                     on_each(feat)?;
                 }
                 Ok(())
@@ -208,6 +222,7 @@ impl std::fmt::Debug for Sink {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SinkOptions {
     pub batch_size: usize,
     pub hilbert_sort: bool,
@@ -225,52 +240,49 @@ impl Default for SinkOptions {
 }
 
 impl Sink {
-    pub fn create(path: &Path, schema: &Schema, opts: SinkOptions) -> Result<Self, String> {
+    pub fn create(path: &Path, schema: &Schema, opts: SinkOptions) -> Result<Self> {
         match Format::from_path(path)? {
             Format::GeoParquet => {
-                let file = std::fs::File::create(path)
-                    .map_err(|e| format!("creating {}: {e}", path.display()))?;
+                let file = std::fs::File::create(path)?;
                 let writer_opts = WriterOptions {
                     batch_size: opts.batch_size,
                     add_bbox_columns: opts.add_bbox_columns,
                     hilbert_sort: opts.hilbert_sort,
                     ..WriterOptions::default()
                 };
-                let w = GeoParquetWriter::create(file, schema, writer_opts)
-                    .map_err(|e| format!("creating parquet writer: {e}"))?;
+                let w = GeoParquetWriter::create(file, schema, writer_opts)?;
                 Ok(Sink::GeoParquet(Box::new(w)))
             }
             Format::GeoJson => {
-                let file = std::fs::File::create(path)
-                    .map_err(|e| format!("creating {}: {e}", path.display()))?;
-                let w = GeoJsonWriter::create(BufWriter::new(file), schema)
-                    .map_err(|e| format!("creating geojson writer: {e}"))?;
+                let file = std::fs::File::create(path)?;
+                let w = GeoJsonWriter::create(BufWriter::new(file), schema)?;
                 Ok(Sink::GeoJson(Box::new(w)))
             }
-            other => Err(format!(
-                "unsupported output format: {} (supported: .parquet, .geojson)",
-                other.label()
-            )),
+            other => Err(ConvertError::UnsupportedFormat {
+                ext: other.label().to_string(),
+                path: path.display().to_string(),
+                supported: ".parquet, .geojson (read also supports .gdb / .shp)",
+            }),
         }
     }
 
-    pub fn write(&mut self, feat: &Feature) -> Result<(), String> {
+    pub fn write(&mut self, feat: &Feature) -> Result<()> {
         match self {
-            Sink::GeoParquet(w) => w.write(feat).map_err(|e| format!("write parquet row: {e}")),
-            Sink::GeoJson(w) => w.write(feat).map_err(|e| format!("write geojson feature: {e}")),
+            Sink::GeoParquet(w) => w.write(feat).map_err(ConvertError::from),
+            Sink::GeoJson(w) => w.write(feat).map_err(ConvertError::from),
         }
     }
 
-    pub fn close(self) -> Result<(), String> {
+    pub fn close(self) -> Result<()> {
         match self {
-            Sink::GeoParquet(w) => w
-                .close()
-                .map(|_| ())
-                .map_err(|e| format!("closing parquet writer: {e}")),
-            Sink::GeoJson(w) => w
-                .close()
-                .map(|_| ())
-                .map_err(|e| format!("closing geojson writer: {e}")),
+            Sink::GeoParquet(w) => {
+                w.close()?;
+                Ok(())
+            }
+            Sink::GeoJson(w) => {
+                w.close()?;
+                Ok(())
+            }
         }
     }
 }

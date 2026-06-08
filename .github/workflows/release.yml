@@ -12,10 +12,9 @@ name: release
 # - Crates publish strictly in dep order. Each step waits for the previous
 #   crate to be queryable on the crates.io index before publishing the next
 #   (avoids the classic "version not found" race).
-# - Placeholder crates (geonative-shapefile, -geojson, -processing, -convert,
-#   and the meta `geonative`) are pinned at 0.0.1 in their own Cargo.toml and
-#   intentionally NOT published here. They'll be added to this matrix when
-#   their implementations land.
+# - The meta `geonative` umbrella crate is still pinned at 0.0.1 and
+#   intentionally NOT published here. It'll be added when its feature-gated
+#   re-exports stabilize.
 
 on:
   push:
@@ -51,8 +50,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # Layer 1: foundation (no internal deps)
       - name: Publish geonative-core
         run: cargo publish -p geonative-core --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      # Layer 2: depend only on core
+      - name: Publish geonative-utils
+        run: cargo publish -p geonative-utils --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish geonative-tile
+        run: cargo publish -p geonative-tile --no-verify
       - name: Wait for index
         run: sleep 30
 
@@ -61,11 +72,39 @@ jobs:
       - name: Wait for index
         run: sleep 30
 
+      - name: Publish geonative-shapefile
+        run: cargo publish -p geonative-shapefile --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish geonative-geojson
+        run: cargo publish -p geonative-geojson --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      - name: Publish geonative-processing
+        run: cargo publish -p geonative-processing --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      # Layer 3: depend on layer 2
       - name: Publish geonative-geoparquet
         run: cargo publish -p geonative-geoparquet --no-verify
       - name: Wait for index
         run: sleep 30
 
+      - name: Publish geonative-mvt
+        run: cargo publish -p geonative-mvt --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      # Layer 4: orchestration — depends on every format crate
+      - name: Publish geonative-convert
+        run: cargo publish -p geonative-convert --no-verify
+      - name: Wait for index
+        run: sleep 30
+
+      # Layer 5: binary
       - name: Publish geonative-cli
         run: cargo publish -p geonative-cli --no-verify
 

@@ -111,11 +111,24 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **`geonative profile <source>` CLI** — wraps the processing call with format-polymorphic input via `Source`. Flags: `--top N`, `--sample N`, `--distinct-limit N`, `--pretty`.
 - [x] Float-aware: floats get min/max but no top-N (NaN-safe hashing isn't worth it). Strings get lex min/max. 265 workspace tests, clippy clean.
 
+### Lib-ify CLI ops + promote convert (Phase 12d)
+- [x] **`geonative-convert` v0.1** promoted from placeholder to real orchestration library. Houses:
+  - `Source` (any of .gdb/.shp/.parquet/.geojson) + `Sink` (.parquet/.geojson) + `SinkOptions`
+  - `convert(src, dst, opts) -> ConvertStats` with optional progress callback
+  - `filter::filter_bbox(src, dst, query_bbox, layer, opts) -> FilterStats`
+  - `inspect(src) -> DatasetInspection`
+  - `metadata(src) -> Sidecar`
+  - Typed `ConvertError` with per-format `From` impls (no more stringly-typed errors)
+- [x] **`geonative-geoparquet::optimize`** — promoted from CLI helper to a library entry point `optimize(in, out, opts) -> OptimizeReport`.
+- [x] **CLI is now a thin wrapper.** main.rs is just argparse + dispatch + progress reporting; every subcommand delegates to a library function downstream services can call directly. Zebflow/GovEyes import `geonative-convert` (+ `geonative-processing`, `geonative-geoparquet`) and call the same functions the CLI runs.
+- [x] Release workflow updated to publish all 10 real-0.1.0 crates in dep order.
+- [x] 267 workspace tests, clippy clean.
+
 ---
 
 ## In progress
 
-- Phase 12c: `geonative-proj-pure` v0.1 (4326↔3857 + UTM + GDA2020/MGA)
+- Phase 12e: `geonative-proj` v0.1 (4326↔3857 + UTM + GDA2020/MGA — Krüger n-series TM, from scratch)
 
 ---
 

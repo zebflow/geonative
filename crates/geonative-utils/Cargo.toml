@@ -1,6 +1,6 @@
 [package]
 name = "geonative-utils"
-description = "Geometric algorithms (Douglas-Peucker simplification, zoom-dependent tolerance presets) for the geonative geospatial library."
+description = "Geometric algorithms (Douglas-Peucker simplification, Hilbert curve, distance/length/area) for the geonative geospatial library."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,13 +1,55 @@
 //! # geonative-convert
 //!
-//! `ogr2ogr`-style format conversion pipeline for
-//! [`geonative`](https://geonative.zebflow.com). Pipes features from any
-//! `geonative-core::Layer` source to any `LayerWriter` sink, with optional
-//! attribute/spatial filtering and reprojection.
+//! Format-polymorphic orchestration layer for
+//! [`geonative`](https://geonative.zebflow.com). This is the crate downstream
+//! services (Zebflow, GovEyes, your-pipeline-here) import to **do things to
+//! datasets** without caring which file format they're in.
 //!
-//! **This is a placeholder release** to reserve the crate name. The real API
-//! is in active development at <https://github.com/zebflow/geonative>.
+//! ## What's in it
+//!
+//! - [`Source`] — opens any of `.gdb` / `.shp` / `.parquet` / `.geojson`
+//!   and streams `Feature`s through a callback.
+//! - [`Sink`] — writes `Feature`s to `.parquet` or `.geojson`, format
+//!   chosen by output extension.
+//! - [`convert`] — orchestrate `Source` → `Sink` (the basic copy).
+//! - [`filter_bbox`] — convert + bbox-intersect filter middleware.
+//! - [`inspect`] — schema / CRS / extent / field-types report (no writes).
+//! - [`metadata`] — write a `.geonative.json` sidecar (= inspect + envelope).
+//!
+//! ## Same API the CLI uses
+//!
+//! Every `geonative` subcommand delegates to one of the functions above.
+//! Importing this crate gives downstream Rust code the same surface the
+//! binary exposes — no subprocesses, no JSON parsing.
+//!
+//! ```no_run
+//! use geonative_convert::{convert, ConvertOptions};
+//! use std::path::Path;
+//!
+//! let stats = convert(
+//!     Path::new("vicmap.gdb"),
+//!     Path::new("out.parquet"),
+//!     ConvertOptions::default(),
+//! )?;
+//! println!("wrote {} features", stats.features);
+//! # Ok::<(), geonative_convert::ConvertError>(())
+//! ```
 
 #![forbid(unsafe_code)]
+#![warn(missing_debug_implementations)]
+
+pub mod convert;
+pub mod error;
+pub mod filter;
+pub mod inspect;
+pub mod io;
+pub mod metadata;
+
+pub use convert::{convert, ConvertOptions, ConvertStats};
+pub use error::{ConvertError, Result};
+pub use filter::{bbox_intersects, filter_bbox, Bbox2, FilterStats};
+pub use inspect::{inspect, CrsInspection, DatasetInspection, FieldInspection, GeometryInspection, LayerInspection};
+pub use io::{Format, Sink, SinkOptions, Source};
+pub use metadata::{build as metadata, default_sidecar_path, Sidecar};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

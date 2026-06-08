@@ -332,7 +332,7 @@ fn metadata_writes_sidecar() {
     assert!(sidecar.exists(), "sidecar not written at {sidecar:?}");
     let bytes = std::fs::read(&sidecar).expect("read sidecar");
     let json: serde_json::Value = serde_json::from_slice(&bytes).expect("sidecar is JSON");
-    assert_eq!(json["generator"], "geonative-cli");
+    assert_eq!(json["generator"], "geonative-convert");
     assert_eq!(json["spec_version"], 1);
     assert_eq!(json["format"], "geoparquet");
     assert!(json["layers"].is_array());
