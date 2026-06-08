@@ -91,8 +91,15 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] `.github/workflows/release.yml` — triggers on `v*` tag push; runs test + clippy then publishes core → filegdb → geoparquet → cli sequentially with 30s waits for crates.io indexing; creates GitHub Release with auto-generated notes
 - [x] `.github/workflows/ci.yml` — fmt + clippy + test on push/PR across ubuntu/macos/windows
 - [x] First `cargo fmt --all` pass + all `clippy -D warnings` issues resolved (workspace builds clippy-clean)
-- [ ] **You: add `CARGO_REGISTRY_TOKEN` secret in GitHub Settings → Secrets and variables → Actions** (from your crates.io account API tokens)
-- [ ] **You: `git tag v0.1.0 && git push origin v0.1.0`** to kick off the first real release
+- [x] **`CARGO_REGISTRY_TOKEN` secret** added in GitHub Settings → Actions secrets
+- [x] **First `v0.1.0` tag pushed**, release workflow published the four crates to crates.io
+
+### CLI subcommand expansion (Phase 11, targets 0.1.x patch)
+- [x] **`geonative inspect <source> [--pretty]`** — format-agnostic dataset introspection across `.gdb`/`.shp`/`.parquet`, emits JSON of schema/CRS/geometry/declared extent/field types
+- [x] **`geonative optimize <in.parquet> <out.parquet>`** — rewrites a parquet with Hilbert sort + bbox covering columns enabled; reports size delta
+- [x] **`geonative filter-bbox <in> <out.parquet> --bbox xmin,ymin,xmax,ymax`** — streams features from any supported source, keeps those whose bbox intersects the query bbox (coarse filter, no exact clipping); reports scanned/kept ratio
+- [x] **`geonative metadata <source> [--write PATH]`** — writes a `.geonative.json` sidecar (inspect output + generator envelope with `spec_version`)
+- [x] 11 new tests added (6 unit, 5 end-to-end driving the compiled binary); 220 workspace tests now green, clippy `-D warnings` clean
 
 ---
 
