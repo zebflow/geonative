@@ -49,6 +49,11 @@ impl AttrBuilder {
                 Self::DateTime(TimestampMicrosecondBuilder::new().with_timezone("UTC"))
             }
             ValueType::Guid => Self::Guid(FixedSizeBinaryBuilder::new(16)),
+            // Future ValueType variants — fall back to String (Arrow Utf8).
+            // Schema mapping (which has already classified this column) is
+            // the right place to reject genuinely unknown types upstream;
+            // here we make a best-effort default.
+            _ => Self::String(StringBuilder::new()),
         }
     }
 

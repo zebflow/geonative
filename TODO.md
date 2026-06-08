@@ -65,6 +65,18 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **new crate `geonative-mvt`** — hand-rolled MVT 2.1 protobuf encoder (no `prost` dep). Modules: `proto` (varint/zigzag/tag/length-delim), `geom` (Geometry → command stream with MoveTo/LineTo/ClosePath + cursor accumulator), `builder::LayerBuilder` (per-layer key/value interning + feature body emission), `lib` (`TileBuilder` + one-shot helpers + multi-layer assembly). 21 unit tests.
 - [x] Both crates added to workspace + `[workspace.dependencies]`; placeholder pins not needed (these are new crates, no crates.io publish yet)
 
+### MVT gap-closers for full migration parity (Phase 8)
+- [x] **new crate `geonative-utils`** — Douglas-Peucker simplification + `tolerance_for_zoom(z)` preset table. Operates on any `Geometry` variant; preserves ring closure for polygons; pure algorithm (no deps). 12 unit tests.
+- [x] **`gzip` feature flag in `geonative-mvt`** — adds optional `flate2` dep behind `gzip` feature; exposes `gzip_compress` / `gzip_compress_with` / `gzip_decompress`. Lets consumers serve `.mvt.gz` over HTTP without an external compression layer. 4 additional tests behind the feature.
+- [x] After this: ~95-100% of the MVT logic currently inline in zebflow is replaceable. Remaining "gap" (direct WKB ingest fast path) is a perf optimization, not a correctness or feature gap.
+
+### Stability grounding for public API (Phase 9)
+- [x] `geonative-utils` moved to **grouped-modules-only** (no root re-exports) so the domain stays visible at every call site as the crate grows
+- [x] `#[non_exhaustive]` on the growable IR enums in `geonative-core`: `Geometry`, `GeometryType`, `Value`, `ValueType`, `Crs`. Adding new variants (curves, surfaces, Z/M, Decimal, JsonValue, etc.) no longer counts as a SemVer-breaking change
+- [x] Wildcard arms added at every cross-crate `match` site (8 places across `geonative-utils`, `geonative-mvt`, `geonative-geoparquet`, `geonative-filegdb` tests) with deliberate fallback behavior — silent pass-through for cosmetic ops, explicit "Unsupported" errors for genuine work
+- [x] **`STABILITY.md`** at repo root documents the principles: SemVer regime, module organization, `#[non_exhaustive]` rules, field visibility, dependency-leakage rules, re-export discipline, reviewer checklist
+- [x] 177 workspace tests still green with `--all-features`; clippy still clean with `-D warnings`
+
 ### Tag-driven crates.io publish setup (Phase 6)
 - [x] Workspace version bumped 0.0.1 → 0.1.0 for implemented crates; placeholders (shapefile/geojson/processing/convert/meta) pinned to 0.0.1 so they don't accidentally ship as empty 0.1.0 shells
 - [x] Inter-crate deps moved to `[workspace.dependencies]`; per-crate manifests use `name = { workspace = true }` (avoids the `sed`-the-Cargo.toml hack used by some sibling projects)

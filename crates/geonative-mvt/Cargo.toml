@@ -16,3 +16,11 @@ readme = "README.md"
 geonative-core = { workspace = true }
 geonative-tile = { workspace = true }
 thiserror = "2"
+flate2 = { version = "1", optional = true }
+
+[features]
+default = []
+# Enables `gzip_compress` and `gzip_decompress` helpers. Adds flate2 to the
+# dep tree. Recommended for any tile server serving over HTTP — the MVT spec
+# expects the bytes to arrive gzip-compressed.
+gzip = ["dep:flate2"]

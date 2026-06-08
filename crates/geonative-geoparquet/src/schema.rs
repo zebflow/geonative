@@ -111,6 +111,14 @@ pub fn arrow_type_for(t: ValueType) -> Result<DataType> {
         ValueType::DateTime => DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
         ValueType::Guid => DataType::FixedSizeBinary(16),
         ValueType::Xml => DataType::Utf8,
+        // Future ValueType variants — refuse rather than silently coerce.
+        // Callers can extend this map when they upgrade geonative-core and
+        // need first-class support for the new variant.
+        _ => {
+            return Err(GeoParquetError::unsupported(format!(
+                "unrecognized ValueType {t:?} — geonative-core may be newer than this crate"
+            )))
+        }
     })
 }
 

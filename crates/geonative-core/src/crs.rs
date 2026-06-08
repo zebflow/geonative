@@ -1,7 +1,11 @@
 //! Coordinate reference system. Carried through verbatim from the source so
 //! each writer can serialize it in its own preferred form.
 
+/// Coordinate reference system. Marked `#[non_exhaustive]` because future
+/// versions may add `Wkt2(String)`, a structured `Authority { name, code }`,
+/// or pre-parsed PROJJSON without that counting as a SemVer-breaking change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Crs {
     /// CRS unknown or unspecified.
     #[default]

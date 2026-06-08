@@ -242,6 +242,9 @@ fn to_interned(v: &Value) -> Option<InternedValue> {
         Value::DateTime(d) => InternedValue::Double(d.to_bits()),
         Value::Xml(s) => InternedValue::String(s.clone()),
         Value::Binary(_) | Value::Guid(_) => return None,
+        // Future Value variants (e.g. Decimal, Json) — skip rather than
+        // guess at the right MVT representation.
+        _ => return None,
     })
 }
 

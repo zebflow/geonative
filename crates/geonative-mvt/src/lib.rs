@@ -49,10 +49,16 @@ pub mod error;
 pub mod geom;
 pub mod proto;
 
+#[cfg(feature = "gzip")]
+pub mod gzip;
+
 pub use builder::LayerBuilder;
 pub use error::{MvtError, Result};
 pub use geom::MvtGeomType;
 pub use geonative_tile::{LngLat, Metatile, TileCoord};
+
+#[cfg(feature = "gzip")]
+pub use gzip::{gzip_compress, gzip_compress_with, gzip_decompress, Compression};
 
 use geonative_core::{Feature, Schema};
 

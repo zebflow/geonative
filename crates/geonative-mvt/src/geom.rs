@@ -57,6 +57,13 @@ pub fn classify(g: &Geometry) -> Result<MvtGeomType> {
             ))
         }
         Geometry::Empty(_) => MvtGeomType::Unknown,
+        // Future Geometry variants (e.g. curves, surfaces) — refuse rather
+        // than silently misclassify.
+        _ => {
+            return Err(MvtError::Unsupported(
+                "unrecognized Geometry variant — geonative-core may be newer than this crate".into(),
+            ))
+        }
     })
 }
 
@@ -88,6 +95,12 @@ pub fn encode_geometry(
         Geometry::GeometryCollection(_) => {
             return Err(MvtError::Unsupported(
                 "GeometryCollection — flatten before encoding".into(),
+            ))
+        }
+        // Future Geometry variants — refuse cleanly.
+        _ => {
+            return Err(MvtError::Unsupported(
+                "unrecognized Geometry variant — geonative-core may be newer than this crate".into(),
             ))
         }
     }

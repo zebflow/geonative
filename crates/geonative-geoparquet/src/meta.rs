@@ -58,6 +58,9 @@ fn geometry_type_string(t: GeometryType) -> &'static str {
         GeometryType::MultiLineString => "MultiLineString",
         GeometryType::MultiPolygon => "MultiPolygon",
         GeometryType::GeometryCollection => "GeometryCollection",
+        // Future GeometryType variants: emit "Geometry" — the GeoParquet
+        // spec's generic catch-all that signals "could be any subtype".
+        _ => "Geometry",
     }
 }
 

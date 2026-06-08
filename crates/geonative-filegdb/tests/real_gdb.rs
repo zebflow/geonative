@@ -320,6 +320,7 @@ fn decode_all_geometries_of_feature_class() {
             Geometry::MultiPolygon(_) => "MultiPolygon",
             Geometry::GeometryCollection(_) => "GeometryCollection",
             Geometry::Empty(_) => "Empty",
+            _ => "Other",
         };
         *variant_counts.entry(key).or_default() += 1;
         decoded += 1;
@@ -486,5 +487,6 @@ fn collect_coords(g: &Geometry) -> Vec<geonative_core::Coord> {
             .collect(),
         GeometryCollection(v) => v.iter().flat_map(collect_coords).collect(),
         Empty(_) => vec![],
+        _ => vec![],
     }
 }

@@ -10,7 +10,12 @@
 //! their preferred representation (ISO 8601, Arrow Timestamp, …) at write time.
 //! A strong-typed `DateTime` value is on the roadmap for v0.2.
 
+/// One attribute value. Marked `#[non_exhaustive]` because future versions
+/// may add variants (e.g. `Date` / `Time` / `DateTimeOffset` once we move
+/// off the f64-days representation, or `Json` / `Decimal` for richer schemas)
+/// without that counting as a SemVer-breaking change.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Value {
     Null,
     Bool(bool),
@@ -30,8 +35,10 @@ pub enum Value {
 }
 
 /// Type discriminant for [`Value`]. Used by [`crate::FieldDef`] to describe
-/// schema without binding a per-cell value.
+/// schema without binding a per-cell value. Tracks [`Value`] one-for-one;
+/// the same `#[non_exhaustive]` rationale applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ValueType {
     Bool,
     Int16,

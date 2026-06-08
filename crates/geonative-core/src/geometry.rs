@@ -98,7 +98,12 @@ impl Polygon {
 
 /// Discriminant of [`Geometry`]. Used in `Geometry::Empty(_)` to preserve
 /// the type of a typed-empty geometry (WKB requires this).
+///
+/// Marked `#[non_exhaustive]` because future versions may add `Triangle`,
+/// `TIN`, `PolyhedralSurface`, or richer multi-* variants without that
+/// counting as a SemVer-breaking change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum GeometryType {
     Point,
     LineString,
@@ -109,7 +114,11 @@ pub enum GeometryType {
     GeometryCollection,
 }
 
+/// The geometry tree. Marked `#[non_exhaustive]` so future SemVer-minor
+/// releases can add variants (curves, surfaces, Z/M-bearing variants once
+/// the IR grows past 2D).
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Geometry {
     Point(Coord),
     LineString(LineString),
