@@ -68,24 +68,35 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Idempotent publish helper.
-      # - Succeeds if the publish goes through.
-      # - Succeeds (with note) if crates.io says "already uploaded".
-      # - Fails on any other error.
-      # New-crate rate limit (1 per ~10 min) is handled by the longer
-      # sleeps after each `cargo publish` of a brand-new crate name. If
-      # we hit the limit anyway, re-trigger via workflow_dispatch — the
-      # already-published crates will skip cleanly.
+      # - On successful publish: 30s index wait (existing crate) OR 600s
+      #   (new crate name, to stay under crates.io's ~1-per-10-min new-crate
+      #   rate limit). Caller passes `--new` to get the long sleep.
+      # - On "crate version already uploaded": print + skip + no sleep.
+      # - On any other error: fail.
+      # Re-running the workflow against the same tag is safe: already-
+      # published crates skip in seconds; only the un-published ones do
+      # any real work (or wait).
       - name: Define publish helper
         run: |
           cat > /tmp/pub.sh <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
           name="$1"
-          shift
-          echo "Publishing $name..."
-          out=$(cargo publish -p "$name" --no-verify "$@" 2>&1) && echo "$out" && exit 0
-          if echo "$out" | grep -q "crate version .* is already uploaded"; then
-            echo "✓ $name already at this version — skipping"
+          new_crate=${2:-""}
+          echo "▶ Publishing $name..."
+          out=$(cargo publish -p "$name" --no-verify 2>&1) && {
+            echo "$out"
+            if [[ "$new_crate" == "--new" ]]; then
+              echo "⏳ New crate name — sleeping 600s for rate limit window"
+              sleep 600
+            else
+              echo "⏳ Existing crate — 30s index settle"
+              sleep 30
+            fi
+            exit 0
+          }
+          if echo "$out" | grep -qiE "already (uploaded|exists)"; then
+            echo "✓ $name already at this version — skipping (no sleep)"
             exit 0
           fi
           echo "$out"
@@ -93,43 +104,26 @@ jobs:
           EOF
           chmod +x /tmp/pub.sh
 
-      # Layer 1: foundation
+      # Layer 1: foundation (existing crate, just bumps in subsequent releases)
       - run: /tmp/pub.sh geonative-core
-      - run: sleep 30
 
-      # Layer 2: depend only on core (mix of existing + new crate names —
-      # new ones each hit the 10-min rate limit so we sleep long after each).
+      # Layer 2: depend only on core. Mark `--new` for crate names that
+      # have NEVER been published to crates.io before (first 0.x release).
+      # After v0.2.0 these all become existing crates.
       - run: /tmp/pub.sh geonative-utils
-      - run: sleep 600
-
       - run: /tmp/pub.sh geonative-tile
-      - run: sleep 30
-
       - run: /tmp/pub.sh geonative-filegdb
-      - run: sleep 30
-
       - run: /tmp/pub.sh geonative-shapefile
-      - run: sleep 30
-
       - run: /tmp/pub.sh geonative-geojson
-      - run: sleep 30
-
       - run: /tmp/pub.sh geonative-processing
-      - run: sleep 30
-
-      - run: /tmp/pub.sh geonative-proj
-      - run: sleep 600
+      - run: /tmp/pub.sh geonative-proj --new
 
       # Layer 3: depend on layer 2
       - run: /tmp/pub.sh geonative-geoparquet
-      - run: sleep 30
-
-      - run: /tmp/pub.sh geonative-mvt
-      - run: sleep 600
+      - run: /tmp/pub.sh geonative-mvt --new
 
       # Layer 4: orchestration — depends on every format crate
-      - run: /tmp/pub.sh geonative-convert
-      - run: sleep 600
+      - run: /tmp/pub.sh geonative-convert --new
 
       # Layer 5: binary
       - run: /tmp/pub.sh geonative-cli
