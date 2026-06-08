@@ -149,13 +149,67 @@ Living checklist. Status as of `81a73ef` on `main`.
 
 ## Next up (priority order)
 
-- [ ] **Add module-level rustdoc** (`//!` blocks) to every remaining `.rs` file in the workspace following the pattern set in `wkb.rs` (one-line purpose + architecture + clever bits).
-- [ ] **`geonative-shapefile`** reader — byte specs already researched (deep-research-3 + compass-3 in `~/Downloads`).
-- [ ] Extract `Dataset` / `Layer` / `LayerWriter` traits in `geonative-core` once a second format reader lands.
+After v0.2.0 ships, the gate is **let Zebflow integrate end-to-end and report what's missing.** Stabilise the existing surface before adding more. Then:
+
+- [ ] **Sprint 13: raster foundation** — see "Raster (Sprint 13)" below. Estimated ~3 weeks. Don't start until Zebflow's vector workflows are running on v0.2.0 cleanly.
+- [ ] Add module-level rustdoc (`//!` blocks) to every remaining `.rs` file in the workspace following the pattern set in `wkb.rs`.
 
 ---
 
 ## Backlog
+
+### Raster (Sprint 13 — after v0.2.0 stabilises with Zebflow)
+
+Goal: complete the foundation so geonative serves both vector AND raster geospatial workloads — same IR philosophy, same lean architecture, same Raspberry-Pi-friendly resource use (mmap + on-demand tile decoding for multi-GB sources).
+
+**Architectural framing — IR additions to `geonative-core` (NOT a new crate):**
+
+The raster IR mirrors the vector IR, sharing `Crs` / `Error` / `Coord` / `Geometry`. Same one-foundation-for-everything model:
+
+| Vector IR (today) | Raster IR (add to `core::raster::*`) |
+| --- | --- |
+| `Geometry` tree | `RasterTile` — pixels + dimensions + dtype |
+| `Feature` (fid + geom + attrs) | `RasterTile` IS the row-analog — one chunk of pixels |
+| `Schema` | `RasterProfile` (bands + dtype + nodata + geo-transform) |
+| `Coord` | `PixelType` enum (U8/U16/I16/F32/F64/Rgb8/Rgba8) |
+| `Value` / `ValueType` | `Band` (one channel — name, dtype, nodata, raw bytes) |
+| `Layer` trait | `RasterLayer` trait (extent, crs, bands, pyramid levels, `read_tile(level, x, y)`) |
+
+Cross-modal ops (clip raster by polygon, rasterize features, vectorize raster) want both IRs in scope — that's why both belong in `core`. Optionally feature-gate `core` so vector-only consumers don't compile raster types.
+
+**Plan:**
+
+- [ ] **`core::raster::*` module** — `RasterTile`, `Band`, `PixelType`, `GeoTransform`, `BandDescriptor`, `RasterLayer` trait. Behind optional `raster` feature on `geonative-core`. ~1 day.
+- [ ] **`geonative-geotiff` v0.1 reader** — pure-Rust TIFF decoder (BigTIFF support, LZW + DEFLATE + PackBits codecs), mmap-backed, GeoKey directory parsing for CRS. Implements `core::raster::RasterLayer`. ~5 days.
+- [ ] **COG support via `cog` feature flag on `geonative-geotiff`** (NOT a sibling crate — COG is a strict profile of GeoTIFF, not a different format). Byte-range reads + IFD-per-pyramid-level lookups so multi-TB COGs work on a Raspberry Pi. ~2 days.
+- [ ] **`geonative-mbtiles` v0.1** — SQLite-backed XYZ tile container. Pulls `rusqlite` (heavy dep, deserves own crate). Read + write for raster pyramids; future v0.2 adds vector MVT tiles in the same container. ~3 days.
+- [ ] **`processing::raster::*` operations**:
+  - `reproject` (raster warp) — uses `geonative-proj::Transformer` + bilinear resampling
+  - `resample` (nearest, bilinear, cubic, lanczos)
+  - `pyramid_build` (downsample to lower-res tiles; average/nearest/mode)
+  - `clip_by_polygon` (vector geometry + raster pixels — the cross-modal one)
+  - `hillshade` / `slope` / `aspect` (DEM analysis)
+  - `band_math` (NDVI, NDWI, custom expressions later)
+  - ~5 days for core ops
+- [ ] **`utils::raster::*` math primitives** — bilinear/cubic/lanczos kernels, pyramid-level math, tile-block iteration helpers. ~2 days.
+- [ ] **`convert::RasterSource` / `RasterSink`** — extend the orchestrator. `geonative convert dem.tif out.mbtiles --to-crs EPSG:3857` should Just Work. ~2 days.
+- [ ] **CLI: `geonative inspect dem.tif`** picks up automatically once `RasterSource` exists in convert (it already dispatches on extension).
+
+**Naming:** the IR is `core::raster::*`. No `geonative-rasterkind` or similar — keep names plain and discoverable.
+
+**Reference / format crate roadmap (one per real format, same pattern as vector):**
+
+- `geonative-geotiff` (GeoTIFF + COG via feature)
+- `geonative-mbtiles` (SQLite tile container)
+- `geonative-zarr` (cloud-native multidim arrays) — future, biggest lift
+- `geonative-png-tile` (raw XYZ PNG tile read/write) — small, useful for serving
+
+**Service layer (Sprint 14+, not blocking):**
+
+- `geonative-wms` / `geonative-wmts` — HTTP protocol handler crates (separate from format crates)
+- `geonative-tileserver` — the HTTP server binary that composes WMS/WMTS + raster + vector
+
+---
 
 ### Migrating zebflow spatial code into geonative
 Per audit, ~55 spatial functions in zebflow are candidates. Migration order:
