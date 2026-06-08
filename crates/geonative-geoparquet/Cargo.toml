@@ -14,6 +14,7 @@ readme = "README.md"
 
 [dependencies]
 geonative-core = { workspace = true }
+geonative-utils = { workspace = true }
 arrow = "58.3.0"
 parquet = { version = "58.3.0", default-features = false, features = ["arrow", "zstd"] }
 thiserror = "2"

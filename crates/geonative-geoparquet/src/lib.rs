@@ -18,7 +18,6 @@
 
 pub mod builder;
 pub mod error;
-pub mod hilbert;
 pub mod meta;
 pub mod reader;
 pub mod schema;

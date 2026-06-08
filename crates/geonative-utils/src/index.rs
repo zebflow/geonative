@@ -1,13 +1,28 @@
-//! Hilbert curve helpers for ordering features by 2D spatial locality.
+//! Spatial-locality indexing helpers — primarily Hilbert curve encoding.
 //!
-//! Used by the optimize pass to sort features such that physically-near
-//! features end up in the same Parquet row group, making `xmin/xmax`
-//! per-row-group statistics highly selective for spatial predicates.
+//! ## What this module is
 //!
-//! The encoding uses the classic XY → Hilbert-distance algorithm from
-//! Wikipedia's "Hilbert curve" article. Order = 16 bits per axis means each
-//! axis is quantized to a 65536-cell grid; Hilbert distances fit in u32 with
-//! room to spare and tend to cluster physically-adjacent points together.
+//! Spatial keys that map 2D points to 1D distances along a space-filling
+//! curve. Used to cluster physically-near features into the same Parquet
+//! row group / SQLite page / R-tree bucket, making bbox-based predicates
+//! highly selective.
+//!
+//! ## Architecture position
+//!
+//! Originally lived in `geonative-geoparquet::hilbert`; moved here so any
+//! format crate (GeoParquet, GPKG, FlatGeoBuf, R-tree builders) can share
+//! the same primitives.
+//!
+//! ## Clever bits
+//!
+//! - **Order = 16 bits per axis** → 65,536-cell grid. Sub-meter resolution
+//!   for typical lng/lat datasets; Hilbert distances fit in u32 with room
+//!   to spare (u64 return type is just for future expansion).
+//! - **`u64::MAX` for non-quantizable inputs.** NaN / degenerate-bbox cases
+//!   sort to the end of any Hilbert-sorted sequence rather than panicking.
+//! - **Pure functions, no Indexer struct.** Callers compute their dataset
+//!   bbox via [`union_bbox`], then map each feature with
+//!   [`hilbert_distance_for`]. No hidden state, no allocation in the hot loop.
 
 /// Convert grid-quantized `(x, y)` (each `0..2^order`) to a Hilbert distance.
 /// `order` must be ≤ 32. For order = 16 the output is ≤ 2^32.

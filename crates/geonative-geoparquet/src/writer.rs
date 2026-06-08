@@ -19,9 +19,10 @@ use parquet::basic::Compression;
 use parquet::file::metadata::KeyValue;
 use parquet::file::properties::WriterProperties;
 
+use geonative_utils::index::{hilbert_distance_for, union_bbox};
+
 use crate::builder::RecordBatchBuilder;
 use crate::error::Result;
-use crate::hilbert::{hilbert_distance_for, union_bbox};
 use crate::meta::{build_geo_metadata_json, GeoMetadataInput};
 use crate::schema::{map_schema, MappedSchema, SchemaMapOptions};
 

@@ -61,7 +61,8 @@ pub fn classify(g: &Geometry) -> Result<MvtGeomType> {
         // than silently misclassify.
         _ => {
             return Err(MvtError::Unsupported(
-                "unrecognized Geometry variant — geonative-core may be newer than this crate".into(),
+                "unrecognized Geometry variant — geonative-core may be newer than this crate"
+                    .into(),
             ))
         }
     })
@@ -100,7 +101,8 @@ pub fn encode_geometry(
         // Future Geometry variants — refuse cleanly.
         _ => {
             return Err(MvtError::Unsupported(
-                "unrecognized Geometry variant — geonative-core may be newer than this crate".into(),
+                "unrecognized Geometry variant — geonative-core may be newer than this crate"
+                    .into(),
             ))
         }
     }
