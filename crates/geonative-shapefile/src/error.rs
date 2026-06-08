@@ -1,4 +1,8 @@
-//! Errors that surface during shapefile reading.
+//! Driver-specific error type for shapefile reading.
+//!
+//! Notable variant: `MissingFile` — the shapefile triad requires all three
+//! of `.shp` / `.shx` / `.dbf`. We surface a clear "missing X" error rather
+//! than treating it as generic I/O so consumers can prompt the user.
 
 use thiserror::Error;
 

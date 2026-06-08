@@ -1,3 +1,6 @@
+//! Driver-specific error type. Wraps Arrow/Parquet errors and converts
+//! cleanly to/from `geonative_core::Error`.
+
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, GeoParquetError>;

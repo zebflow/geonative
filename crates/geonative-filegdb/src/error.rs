@@ -1,5 +1,9 @@
-//! Driver-specific error type. Converts into `geonative_core::Error` at the
-//! public-API boundary.
+//! Driver-specific error type and its conversion into `geonative_core::Error`.
+//!
+//! Internal code returns `GdbError` so error sites have a dialect that fits
+//! the FileGDB format (Eof with byte position, VarintOverflow with the start
+//! offset, etc.). The public API maps via `From<GdbError> for core::Error`
+//! so consumers can use a single error enum across formats.
 
 use thiserror::Error;
 

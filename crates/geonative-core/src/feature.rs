@@ -1,5 +1,25 @@
-//! A `Feature` is one row: an optional feature ID, an optional geometry, and
-//! an indexed attribute vector that parallels [`crate::Schema::fields`].
+//! The "feature" — one row in a spatial dataset.
+//!
+//! ## Shape
+//!
+//! A `Feature` is the trio you'd expect from anything geospatial:
+//! - **`fid`** — optional row identifier (FileGDB OBJECTID, Shapefile record
+//!   number, GeoJSON's free-form `id`). `None` for formats that don't track
+//!   one (raw GeoJSON FeatureCollections, Arrow record batches).
+//! - **`geometry`** — optional `Geometry`. `None` for attribute-only tables
+//!   (GDB system tables, DBF-only Shapefiles, the `Layer` for a non-spatial
+//!   PostGIS view).
+//! - **`attributes`** — `Vec<Value>` in `Schema::fields` order. Length
+//!   **must** equal the schema's `fields.len()`; readers / writers enforce
+//!   this contract at row build time.
+//!
+//! ## Why a `Vec` and not a `HashMap<String, Value>`
+//!
+//! Format readers/writers care about field order: DBF stores columns in a
+//! fixed sequence, Arrow batches map column index to field, FileGDB rows
+//! emit nullable bitmap bits in declared order. A `HashMap` would lose this
+//! and double the per-row allocation cost. Name lookup is available via
+//! `Schema::field_index(name)`.
 
 use crate::{geometry::Geometry, value::Value};
 

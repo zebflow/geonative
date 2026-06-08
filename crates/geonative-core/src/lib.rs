@@ -1,13 +1,38 @@
 //! # geonative-core
 //!
-//! Core data model for [`geonative`](https://geonative.zebflow.com) — a
-//! lightweight, pure-Rust geospatial library built from scratch.
+//! The data model + WKB codec + object-safe `Dataset`/`Layer` traits that
+//! every other geonative crate builds on. Zero-dep (apart from `thiserror`)
+//! and the optional `geo-types` feature for ecosystem interop.
 //!
-//! This crate defines the **interoperable intermediate representation** that
-//! every format driver (`geonative-filegdb`, `geonative-shapefile`,
-//! `geonative-geojson`, `geonative-geoparquet`, …) reads into or writes from.
-//! The model is Simple-Features-shaped so WKB encoding, GeoJSON, Shapefile,
-//! and GeoParquet writers all become near-trivial walks over the tree.
+//! ## What's in it
+//!
+//! Pick one of these as your starting point depending on what you're doing:
+//!
+//! | Module | What it gives you |
+//! | --- | --- |
+//! | [`geometry`] | `Coord`, `Geometry` (Simple Features tree), `LineString`, `Polygon`, `GeometryType` |
+//! | [`value`] | `Value` (attribute payload) + `ValueType` (schema discriminant) |
+//! | [`schema`] | `Schema` + `FieldDef` + `GeomField` — table-of-contents for one layer |
+//! | [`feature`] | `Feature` — fid + geometry + attributes |
+//! | [`crs`] | `Crs` enum (Unknown / Epsg / Wkt / Projjson) + EPSG resolution |
+//! | [`wkb`] | OGC SF WKB encoder + decoder + alloc-free bbox walker |
+//! | [`dataset`] | Object-safe `Dataset` / `Layer` traits for format-polymorphic code |
+//! | [`error`] | Crate-wide `Error` + `Result` |
+//! | [`geo_types_interop`] *(feature-gated)* | Conversions to/from the `geo-types` crate |
+//!
+//! ## Why this crate exists
+//!
+//! Every format crate (filegdb, shapefile, geoparquet, mvt) reads/writes
+//! its bytes into the same `Feature` / `Geometry` / `Schema` types defined
+//! here. That sharing is what makes the workspace a coherent library
+//! instead of seven independent format codecs.
+//!
+//! ## Stability
+//!
+//! See `STABILITY.md` at the repo root. The growable IR enums
+//! (`Geometry`, `GeometryType`, `Value`, `ValueType`, `Crs`) are
+//! `#[non_exhaustive]` — adding variants in a SemVer-minor release does
+//! not count as a break.
 //!
 //! ## What's in here
 //!

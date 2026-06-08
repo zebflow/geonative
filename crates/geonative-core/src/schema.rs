@@ -1,6 +1,26 @@
-//! Layer schema description. Format readers populate it; format writers
-//! consult it. Fields are an **ordered vector** with name lookup as a
-//! secondary index — DBF, GDB, and Arrow all require defined column order.
+//! Layer schema — the table-of-contents for one layer's attributes +
+//! geometry + CRS.
+//!
+//! ## Structure
+//!
+//! - **`fields: Vec<FieldDef>`** — attribute columns in **declared order**.
+//!   Order is the public contract: DBF row layout, Arrow column indices,
+//!   FileGDB row-blob nullable bitmap all derive from it. Lookup-by-name
+//!   is available via `field_index(name)` against a precomputed `HashMap`.
+//! - **`geometry: Option<GeomField>`** — optional because attribute-only
+//!   tables exist (GDB system tables, DBF sidecars).
+//! - **`crs: Crs`** — the source CRS, carried through verbatim. Readers
+//!   populate it from `.prj` / GDB geom-field metadata / GeoParquet `geo`
+//!   metadata / etc. Writers serialize it in each format's native form
+//!   (WKT / PROJJSON / EPSG code / nothing).
+//!
+//! ## Clever bits
+//!
+//! - **`validate_row`** typechecks an attribute vector against the schema
+//!   before writers ingest it — arity, type tags, nullability.
+//! - **`name_index`** is `private` so callers can't desync it with `fields`;
+//!   it's rebuilt on every `Schema::new`. Adding fields requires a fresh
+//!   `Schema`, not a mutation.
 
 use std::collections::HashMap;
 

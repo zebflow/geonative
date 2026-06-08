@@ -1,8 +1,25 @@
-//! `.shx` index — fixed 8-byte records of `(offset_words, content_len_words)`.
+//! `.shx` random-access index for the companion `.shp`.
 //!
-//! Both fields are **big-endian** int32s. Offsets are word counts from the
-//! start of the `.shp` file (so byte offset = offset_words * 2). The index
-//! lets us seek directly to the N-th shape record in `.shp` without scanning.
+//! ## Layout
+//!
+//! Same 100-byte header as `.shp` (file code, version, shape type, bbox),
+//! then fixed 8-byte records:
+//!
+//! | Bytes | Field |
+//! | --- | --- |
+//! | 0..4 | Offset in 16-bit words from `.shp` start (big-endian i32) |
+//! | 4..8 | Content length in 16-bit words (big-endian i32) |
+//!
+//! Both fields are **big-endian** — they're "file-management" data in
+//! Shapefile parlance. Byte offset = `offset_words * 2`. Without this file
+//! we'd have to scan `.shp` sequentially to find each record.
+//!
+//! ## Clever bit
+//!
+//! We pre-convert words → bytes once on load so the iterator doesn't have
+//! to multiply on every step. The index is parsed eagerly into a `Vec`
+//! (small even for huge shapefiles — 8 bytes × N records ≈ 80 MB at
+//! 10M features, well within RAM budget).
 
 use crate::bytes::Cursor;
 use crate::error::Result;

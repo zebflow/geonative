@@ -77,6 +77,14 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **`STABILITY.md`** at repo root documents the principles: SemVer regime, module organization, `#[non_exhaustive]` rules, field visibility, dependency-leakage rules, re-export discipline, reviewer checklist
 - [x] 177 workspace tests still green with `--all-features`; clippy still clean with `-D warnings`
 
+### Long-tail: utils growth + shapefile + traits + docs (Phase 10)
+- [x] **`utils::index`** — Hilbert curve helpers migrated from `geonative-geoparquet` so any format crate (GPKG, FlatGeoBuf, R-tree builders) can share the same spatial-locality primitives without a parquet dep
+- [x] **`utils::measure`** — distance, length, signed/unsigned ring area, polygon area (shell minus holes). Pure math, no allocation, no geodetic correction (intentional — defer to future `geonative-proj` integration)
+- [x] **`geonative-shapefile` v0.1** — pure-Rust reader, mmap-backed, 17 tests. 2D Point/Polyline/Polygon/MultiPoint + DBF C/N/F/D/L types. Ring winding flipped from Shapefile CW-outer to OGC CCW-outer.
+- [x] **`Dataset` + `Layer` traits in core** — object-safe, polymorphic, opt-in. `Geodatabase` and `Shapefile` both implement them. `SingleLayerDataset<L>` adapter wraps single-layer formats.
+- [x] **Rustdoc sweep** — every previously-weak module-level `//!` block enhanced with purpose / architecture / clever bits per the `STABILITY.md` reviewer checklist
+- [x] 209 workspace tests, all green. Clippy clean with `-D warnings`.
+
 ### Tag-driven crates.io publish setup (Phase 6)
 - [x] Workspace version bumped 0.0.1 → 0.1.0 for implemented crates; placeholders (shapefile/geojson/processing/convert/meta) pinned to 0.0.1 so they don't accidentally ship as empty 0.1.0 shells
 - [x] Inter-crate deps moved to `[workspace.dependencies]`; per-crate manifests use `name = { workspace = true }` (avoids the `sed`-the-Cargo.toml hack used by some sibling projects)
