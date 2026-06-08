@@ -1,8 +1,7 @@
 [package]
 name = "geonative-processing"
-description = "Geoprocessing algorithms (buffer, clip, reproject, …) for the geonative geospatial library"
-# Placeholder; will track workspace version once implemented.
-version = "0.0.1"
+description = "Geoprocessing algorithms (profile, reproject, clip, …) for the geonative geospatial library"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -14,3 +13,5 @@ keywords.workspace = true
 readme = "README.md"
 
 [dependencies]
+geonative-core = { workspace = true }
+serde = { version = "1", features = ["derive"] }

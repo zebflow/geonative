@@ -71,6 +71,11 @@ enum Cmd {
     /// downstream tooling that wants schema/CRS info without re-parsing
     /// the source file.
     Metadata(MetadataArgs),
+
+    /// Profile a dataset: one streaming pass producing null counts, min/max,
+    /// distinct counts, top-N values, and a small head sample per field, plus
+    /// a computed bbox extent and geometry-kind histogram. Emits JSON.
+    Profile(ProfileArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -147,6 +152,33 @@ struct FilterBboxArgs {
 }
 
 #[derive(Parser, Debug)]
+struct ProfileArgs {
+    /// Input dataset (`.gdb`, `.shp`, `.parquet`, or `.geojson`).
+    input: PathBuf,
+
+    /// Layer name (required for multi-layer `.gdb` inputs).
+    #[arg(short, long)]
+    layer: Option<String>,
+
+    /// Top-N most frequent values to report per field. Default 10.
+    #[arg(long, default_value_t = 10)]
+    top: usize,
+
+    /// Number of head-of-file features to keep as samples. Default 5.
+    #[arg(long, default_value_t = 5)]
+    sample: usize,
+
+    /// Maximum distinct values to track per field before falling back to
+    /// "cardinality > limit". Default 10000.
+    #[arg(long, default_value_t = 10_000)]
+    distinct_limit: usize,
+
+    /// Pretty-print the JSON (2-space indent) instead of compact.
+    #[arg(long)]
+    pretty: bool,
+}
+
+#[derive(Parser, Debug)]
 struct MetadataArgs {
     /// Input dataset (`.gdb`, `.shp`, or `.parquet`).
     input: PathBuf,
@@ -175,6 +207,7 @@ fn run(cli: Cli) -> Result<(), String> {
         Cmd::Optimize(args) => run_optimize(args),
         Cmd::FilterBbox(args) => run_filter_bbox(args),
         Cmd::Metadata(args) => run_metadata(args),
+        Cmd::Profile(args) => run_profile(args),
     }
 }
 
@@ -332,6 +365,29 @@ fn run_metadata(args: MetadataArgs) -> Result<(), String> {
         .map_err(|e| format!("writing {}: {e}", target.display()))?;
     eprintln!("wrote sidecar to {}", target.display());
     Ok(())
+}
+
+fn run_profile(args: ProfileArgs) -> Result<(), String> {
+    let source = Source::open(&args.input, args.layer.as_deref())?;
+    let schema = source.schema_cloned()?;
+
+    // The profiler needs an iterator of Feature, not Source's callback API.
+    // We collect into a Vec first — bounded memory is the same as the
+    // sample/distinct-limit caps already enforce per-field, and this lets the
+    // profile module stay independent of the CLI's I/O dispatch.
+    let mut features: Vec<geonative_core::Feature> = Vec::new();
+    source.for_each(|f| {
+        features.push(f);
+        Ok(())
+    })?;
+
+    let opts = geonative_processing::ProfileOptions {
+        top_n: args.top,
+        sample_n: args.sample,
+        distinct_limit: args.distinct_limit,
+    };
+    let report = geonative_processing::profile(&schema, features, opts);
+    print_json(&report, args.pretty)
 }
 
 fn print_json<T: serde::Serialize>(value: &T, pretty: bool) -> Result<(), String> {

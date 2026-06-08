@@ -29,3 +29,4 @@ geonative-mvt = { version = "0.1.0", path = "crates/geonative-mvt" }
 geonative-utils = { version = "0.1.0", path = "crates/geonative-utils" }
 geonative-shapefile = { version = "0.1.0", path = "crates/geonative-shapefile" }
 geonative-geojson = { version = "0.1.0", path = "crates/geonative-geojson" }
+geonative-processing = { version = "0.1.0", path = "crates/geonative-processing" }

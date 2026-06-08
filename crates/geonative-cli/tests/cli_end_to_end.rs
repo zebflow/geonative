@@ -264,6 +264,54 @@ fn filter_bbox_geojson_to_geojson() {
 }
 
 #[test]
+fn profile_emits_expected_json() {
+    let dir = unique_workdir("profile");
+    let src = dir.join("src.geojson");
+    std::fs::write(
+        &src,
+        br#"{"type":"FeatureCollection","features":[
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"cat":"a","score":1}},
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[1,1]},"properties":{"cat":"a","score":2}},
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[2,2]},"properties":{"cat":"b","score":3}},
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[3,3]},"properties":{"cat":"b","score":null}}
+        ]}"#,
+    )
+    .unwrap();
+
+    let out = Command::new(bin())
+        .args(["profile", "--pretty"])
+        .arg(&src)
+        .output()
+        .expect("run profile");
+    assert!(
+        out.status.success(),
+        "profile failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("profile output is JSON");
+
+    assert_eq!(json["feature_count"], 4);
+    assert_eq!(json["geometry"]["null_count"], 0);
+    assert_eq!(json["geometry"]["kinds"]["Point"], 4);
+    let extent = json["geometry"]["computed_extent"].as_array().unwrap();
+    assert_eq!(extent[0], 0.0);
+    assert_eq!(extent[2], 3.0);
+
+    let fields = json["fields"].as_array().unwrap();
+    let cat = fields.iter().find(|f| f["name"] == "cat").unwrap();
+    assert_eq!(cat["null_count"], 0);
+    assert_eq!(cat["distinct_count"], 2);
+    let top = cat["top_values"].as_array().unwrap();
+    // Either "a" or "b" can lead (both count 2); tie-break order is value-ascending.
+    assert_eq!(top[0]["count"], 2);
+    assert_eq!(top[1]["count"], 2);
+
+    let score = fields.iter().find(|f| f["name"] == "score").unwrap();
+    assert_eq!(score["null_count"], 1);
+    assert_eq!(score["value_count"], 3);
+}
+
+#[test]
 fn metadata_writes_sidecar() {
     let dir = unique_workdir("metadata");
     let src = dir.join("src.parquet");

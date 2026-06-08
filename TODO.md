@@ -106,11 +106,15 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] **CLI Source+Sink dispatch** — new `crates/geonative-cli/src/io.rs` unifies format-polymorphic I/O. `convert`/`filter-bbox` now accept any input/output combo across `.gdb`/`.shp`/`.parquet`/`.geojson`; `inspect`/`metadata` accept `.geojson` too. Replaces the per-subcommand per-format dispatch.
 - [x] 3 new end-to-end CLI tests for GeoJSON paths (parquet↔geojson round-trip, inspect, filter-bbox); 257 workspace tests total, clippy clean
 
+### Streaming profile (Phase 12b)
+- [x] **`geonative-processing` v0.1** promoted from placeholder — `profile()` API operating on any `Schema` + `Iterator<Item = Feature>`; emits null counts, value counts, distinct counts (capped at `distinct_limit`), top-N values, min/max, head sample, computed extent + geometry-kind histogram. 7 unit tests.
+- [x] **`geonative profile <source>` CLI** — wraps the processing call with format-polymorphic input via `Source`. Flags: `--top N`, `--sample N`, `--distinct-limit N`, `--pretty`.
+- [x] Float-aware: floats get min/max but no top-N (NaN-safe hashing isn't worth it). Strings get lex min/max. 265 workspace tests, clippy clean.
+
 ---
 
 ## In progress
 
-- Phase 12b: `geonative-processing` v0.1 + `profile` subcommand
 - Phase 12c: `geonative-proj-pure` v0.1 (4326↔3857 + UTM + GDA2020/MGA)
 
 ---
