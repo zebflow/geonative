@@ -29,6 +29,7 @@
 #![warn(missing_debug_implementations)]
 
 pub mod crs;
+pub mod dataset;
 pub mod error;
 pub mod feature;
 pub mod geometry;
@@ -40,6 +41,7 @@ pub mod wkb;
 pub mod geo_types_interop;
 
 pub use crs::Crs;
+pub use dataset::{Dataset, Layer, SingleLayerDataset};
 pub use error::{Error, Result};
 pub use feature::Feature;
 pub use geometry::{Coord, Geometry, GeometryType, LineString, Polygon};

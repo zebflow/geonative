@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use geonative_core::{Crs, Feature, GeomField, GeometryType, Schema, Value};
+use geonative_core::{self as core, Crs, Feature, GeomField, GeometryType, Schema, Value};
 use memmap2::Mmap;
 
 use crate::dbf::{build_schema, decode_field, parse_header, DbfHeader};
@@ -150,6 +150,25 @@ impl<'a> Iterator for FeatureIter<'a> {
             }
         }
         None
+    }
+}
+
+// ----- core::Layer impl -------------------------------------------------
+// Shapefile is single-layer. Wrap with `core::SingleLayerDataset` to expose
+// it through the format-polymorphic `core::Dataset` interface.
+
+impl core::Layer for Shapefile {
+    fn name(&self) -> &str {
+        "default"
+    }
+    fn schema(&self) -> &Schema {
+        &self.schema
+    }
+    fn feature_count(&self) -> Option<i64> {
+        Some(self.dbf_header.n_records as i64)
+    }
+    fn read<'a>(&'a self) -> Box<dyn Iterator<Item = core::Result<Feature>> + 'a> {
+        Box::new(self.read().map(|r| r.map_err(core::Error::from)))
     }
 }
 

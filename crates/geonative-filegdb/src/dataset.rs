@@ -6,7 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use geonative_core::{Crs, Feature, FieldDef, GeomField, GeometryType, Schema, ValueType};
+use geonative_core::{
+    self as core, Crs, Feature, FieldDef, GeomField, GeometryType, Schema, ValueType,
+};
 use memmap2::Mmap;
 
 use crate::catalog::{open_geodatabase, LayerInfo};
@@ -281,6 +283,44 @@ fn field_type_to_value_type(t: FieldTypeCode) -> Result<ValueType> {
         }
         Raster => return Err(GdbError::unsupported("Raster fields not yet supported")),
     })
+}
+
+// ----- core::Dataset / core::Layer impls --------------------------------
+// Object-safe polymorphic wrappers around the concrete Geodatabase + Layer
+// types so format-agnostic code (e.g. a future `geonative-convert` pipeline)
+// can hold `Box<dyn core::Dataset>` without knowing it came from a .gdb.
+
+impl core::Dataset for Geodatabase {
+    fn layer_names(&self) -> Vec<String> {
+        self.layers().iter().map(|l| l.name.clone()).collect()
+    }
+
+    fn open_layer<'a>(&'a self, name: &str) -> core::Result<Box<dyn core::Layer + 'a>> {
+        let layer = self.layer(name).map_err(core::Error::from)?;
+        Ok(Box::new(BoxedLayer { inner: layer }))
+    }
+}
+
+/// Heap-owned wrapper so `core::Dataset::open_layer` can return a boxed
+/// `core::Layer` over a non-`'static` concrete `Layer` that borrows from us.
+#[derive(Debug)]
+struct BoxedLayer {
+    inner: Layer,
+}
+
+impl core::Layer for BoxedLayer {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn schema(&self) -> &Schema {
+        self.inner.schema()
+    }
+    fn feature_count(&self) -> Option<i64> {
+        Some(self.inner.feature_count())
+    }
+    fn read<'a>(&'a self) -> Box<dyn Iterator<Item = core::Result<Feature>> + 'a> {
+        Box::new(self.inner.read().map(|r| r.map_err(core::Error::from)))
+    }
 }
 
 #[cfg(test)]
