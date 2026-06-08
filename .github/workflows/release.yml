@@ -12,6 +12,13 @@ name: release
 # - Crates publish strictly in dep order. Each step waits for the previous
 #   crate to be queryable on the crates.io index before publishing the next
 #   (avoids the classic "version not found" race).
+# - **New-crate rate limit (10 min).** crates.io throttles first-time crate
+#   names. Each crate gets its own `cargo publish || already_published` shim
+#   so the workflow is idempotent — re-runs after a partial failure skip
+#   the crates already at this version, and only the un-published ones
+#   re-attempt.
+# - **`workflow_dispatch`** is enabled so failed runs can be re-triggered
+#   without re-pushing the tag.
 # - The meta `geonative` umbrella crate is still pinned at 0.0.1 and
 #   intentionally NOT published here. It'll be added when its feature-gated
 #   re-exports stabilize.
@@ -20,6 +27,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to release from (e.g. v0.2.0)"
+        required: false
+        default: ""
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -47,71 +62,77 @@ jobs:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      # Layer 1: foundation (no internal deps)
-      - name: Publish geonative-core
-        run: cargo publish -p geonative-core --no-verify
-      - name: Wait for index
-        run: sleep 30
+      # Idempotent publish helper.
+      # - Succeeds if the publish goes through.
+      # - Succeeds (with note) if crates.io says "already uploaded".
+      # - Fails on any other error.
+      # New-crate rate limit (1 per ~10 min) is handled by the longer
+      # sleeps after each `cargo publish` of a brand-new crate name. If
+      # we hit the limit anyway, re-trigger via workflow_dispatch — the
+      # already-published crates will skip cleanly.
+      - name: Define publish helper
+        run: |
+          cat > /tmp/pub.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          name="$1"
+          shift
+          echo "Publishing $name..."
+          out=$(cargo publish -p "$name" --no-verify "$@" 2>&1) && echo "$out" && exit 0
+          if echo "$out" | grep -q "crate version .* is already uploaded"; then
+            echo "✓ $name already at this version — skipping"
+            exit 0
+          fi
+          echo "$out"
+          exit 1
+          EOF
+          chmod +x /tmp/pub.sh
 
-      # Layer 2: depend only on core
-      - name: Publish geonative-utils
-        run: cargo publish -p geonative-utils --no-verify
-      - name: Wait for index
-        run: sleep 30
+      # Layer 1: foundation
+      - run: /tmp/pub.sh geonative-core
+      - run: sleep 30
 
-      - name: Publish geonative-tile
-        run: cargo publish -p geonative-tile --no-verify
-      - name: Wait for index
-        run: sleep 30
+      # Layer 2: depend only on core (mix of existing + new crate names —
+      # new ones each hit the 10-min rate limit so we sleep long after each).
+      - run: /tmp/pub.sh geonative-utils
+      - run: sleep 600
 
-      - name: Publish geonative-filegdb
-        run: cargo publish -p geonative-filegdb --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-tile
+      - run: sleep 30
 
-      - name: Publish geonative-shapefile
-        run: cargo publish -p geonative-shapefile --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-filegdb
+      - run: sleep 30
 
-      - name: Publish geonative-geojson
-        run: cargo publish -p geonative-geojson --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-shapefile
+      - run: sleep 30
 
-      - name: Publish geonative-processing
-        run: cargo publish -p geonative-processing --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-geojson
+      - run: sleep 30
 
-      - name: Publish geonative-proj
-        run: cargo publish -p geonative-proj --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-processing
+      - run: sleep 30
+
+      - run: /tmp/pub.sh geonative-proj
+      - run: sleep 600
 
       # Layer 3: depend on layer 2
-      - name: Publish geonative-geoparquet
-        run: cargo publish -p geonative-geoparquet --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-geoparquet
+      - run: sleep 30
 
-      - name: Publish geonative-mvt
-        run: cargo publish -p geonative-mvt --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-mvt
+      - run: sleep 600
 
       # Layer 4: orchestration — depends on every format crate
-      - name: Publish geonative-convert
-        run: cargo publish -p geonative-convert --no-verify
-      - name: Wait for index
-        run: sleep 30
+      - run: /tmp/pub.sh geonative-convert
+      - run: sleep 600
 
       # Layer 5: binary
-      - name: Publish geonative-cli
-        run: cargo publish -p geonative-cli --no-verify
+      - run: /tmp/pub.sh geonative-cli
 
   github-release:
     name: GitHub Release
@@ -121,6 +142,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
