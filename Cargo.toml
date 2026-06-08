@@ -24,3 +24,5 @@ keywords = ["geospatial", "gis", "geo"]
 geonative-core = { version = "0.1.0", path = "crates/geonative-core" }
 geonative-filegdb = { version = "0.1.0", path = "crates/geonative-filegdb" }
 geonative-geoparquet = { version = "0.1.0", path = "crates/geonative-geoparquet" }
+geonative-tile = { version = "0.1.0", path = "crates/geonative-tile" }
+geonative-mvt = { version = "0.1.0", path = "crates/geonative-mvt" }

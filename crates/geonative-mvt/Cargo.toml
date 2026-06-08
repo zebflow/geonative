@@ -1,0 +1,18 @@
+[package]
+name = "geonative-mvt"
+description = "Mapbox Vector Tile (MVT 2.1) encoder for the geonative geospatial library. Pure-Rust, no third-party protobuf dependency."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+
+[dependencies]
+geonative-core = { workspace = true }
+geonative-tile = { workspace = true }
+thiserror = "2"

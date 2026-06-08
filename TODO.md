@@ -60,6 +60,11 @@ Living checklist. Status as of `81a73ef` on `main`.
 - [x] Crate-level lint relaxed `forbid(unsafe_code)` → `deny + #[allow]` scoped to the single `Mmap::map` call with documented SAFETY note
 - [x] 126 workspace tests all green; throughput roughly preserved (sequential scan is mmap-friendly)
 
+### Tile coord math + MVT encoder (Phase 7)
+- [x] **new crate `geonative-tile`** — `TileCoord`/`LngLat` types, lng/lat ↔ Web Mercator XYZ, tile bbox, integer-pixel projection within a tile, metatile grouping. 11 unit tests. Foundation for MVT + future WMS/WMTS/raster tiles.
+- [x] **new crate `geonative-mvt`** — hand-rolled MVT 2.1 protobuf encoder (no `prost` dep). Modules: `proto` (varint/zigzag/tag/length-delim), `geom` (Geometry → command stream with MoveTo/LineTo/ClosePath + cursor accumulator), `builder::LayerBuilder` (per-layer key/value interning + feature body emission), `lib` (`TileBuilder` + one-shot helpers + multi-layer assembly). 21 unit tests.
+- [x] Both crates added to workspace + `[workspace.dependencies]`; placeholder pins not needed (these are new crates, no crates.io publish yet)
+
 ### Tag-driven crates.io publish setup (Phase 6)
 - [x] Workspace version bumped 0.0.1 → 0.1.0 for implemented crates; placeholders (shapefile/geojson/processing/convert/meta) pinned to 0.0.1 so they don't accidentally ship as empty 0.1.0 shells
 - [x] Inter-crate deps moved to `[workspace.dependencies]`; per-crate manifests use `name = { workspace = true }` (avoids the `sed`-the-Cargo.toml hack used by some sibling projects)
