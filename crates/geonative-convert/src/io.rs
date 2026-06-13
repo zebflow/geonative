@@ -37,6 +37,10 @@ pub enum Format {
     GeoJson,
     /// GeoTIFF (regular or Cloud Optimized).
     GeoTiff,
+    /// JPEG with a `.jgw` world file next to it.
+    Jpeg,
+    /// PNG with a `.pgw` world file next to it.
+    Png,
 }
 
 /// Whether a format represents vector features or raster pixels.
@@ -60,10 +64,12 @@ impl Format {
             "parquet" => Ok(Self::GeoParquet),
             "geojson" | "json" => Ok(Self::GeoJson),
             "tif" | "tiff" | "cog" => Ok(Self::GeoTiff),
+            "jpg" | "jpeg" => Ok(Self::Jpeg),
+            "png" => Ok(Self::Png),
             other => Err(ConvertError::UnsupportedFormat {
                 ext: other.to_string(),
                 path: path.display().to_string(),
-                supported: ".gdb, .shp, .parquet, .geojson, .tif, .cog",
+                supported: ".gdb, .shp, .parquet, .geojson, .tif, .cog, .jpg, .png",
             }),
         }
     }
@@ -75,6 +81,8 @@ impl Format {
             Self::GeoParquet => "geoparquet",
             Self::GeoJson => "geojson",
             Self::GeoTiff => "geotiff",
+            Self::Jpeg => "jpeg",
+            Self::Png => "png",
         }
     }
 
@@ -82,7 +90,7 @@ impl Format {
     pub fn modality(self) -> Modality {
         match self {
             Self::FileGdb | Self::Shapefile | Self::GeoParquet | Self::GeoJson => Modality::Vector,
-            Self::GeoTiff => Modality::Raster,
+            Self::GeoTiff | Self::Jpeg | Self::Png => Modality::Raster,
         }
     }
 }
@@ -137,8 +145,8 @@ impl Source {
             Format::Shapefile => Ok(Source::Shapefile(geonative_shapefile::open(path)?)),
             Format::GeoParquet => Ok(Source::GeoParquet(GeoParquetReader::open(path)?)),
             Format::GeoJson => Ok(Source::GeoJson(GeoJsonReader::open(path)?)),
-            Format::GeoTiff => Err(ConvertError::invalid(
-                "GeoTIFF is a raster format; use RasterSource::open instead",
+            Format::GeoTiff | Format::Jpeg | Format::Png => Err(ConvertError::invalid(
+                "raster format; use RasterSource::open instead",
             )),
         }
     }

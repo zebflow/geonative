@@ -25,6 +25,7 @@ use std::time::Instant;
 
 use geonative_core::raster::{RasterLayer, RasterProfile, RasterTile};
 use geonative_geotiff::{Compression, GeoTiff, GeoTiffWriter, WriterOptions};
+use geonative_image::ImageRaster;
 
 use crate::error::{ConvertError, Result};
 use crate::io::{Format, Modality};
@@ -34,12 +35,18 @@ pub enum RasterSource {
     /// GeoTIFF (regular tiled, or COG). Wrapped in `Arc` so a single open
     /// file can be shared across worker threads in tile servers.
     GeoTiff(Arc<GeoTiff>),
+    /// JPEG with a `.jgw` world file. Single-tile, in-memory.
+    Jpeg(Arc<ImageRaster>),
+    /// PNG with a `.pgw` world file. Single-tile, in-memory.
+    Png(Arc<ImageRaster>),
 }
 
 impl std::fmt::Debug for RasterSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GeoTiff(_) => f.write_str("RasterSource::GeoTiff"),
+            Self::Jpeg(_) => f.write_str("RasterSource::Jpeg"),
+            Self::Png(_) => f.write_str("RasterSource::Png"),
         }
     }
 }
@@ -47,9 +54,26 @@ impl std::fmt::Debug for RasterSource {
 impl RasterSource {
     /// Open `path`. Dispatches on extension; only raster formats are
     /// accepted (vector formats route to `Source` instead).
+    ///
+    /// For JPG/PNG inputs, this defaults to `Crs::Unknown`. Use
+    /// [`Self::open_with_crs`] to provide one (the typical pattern when
+    /// the upload form lets users pick a CRS, or pre-converted data has
+    /// a known CRS).
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_with_crs(path, geonative_core::Crs::Unknown)
+    }
+
+    /// Same as [`Self::open`] but with an explicit CRS that's only used
+    /// for image+sidecar inputs (GeoTIFF carries its own CRS in the file).
+    pub fn open_with_crs(path: &Path, image_crs: geonative_core::Crs) -> Result<Self> {
         match Format::from_path(path)? {
             Format::GeoTiff => Ok(RasterSource::GeoTiff(Arc::new(GeoTiff::open(path)?))),
+            Format::Jpeg => Ok(RasterSource::Jpeg(Arc::new(ImageRaster::open_with_crs(
+                path, image_crs,
+            )?))),
+            Format::Png => Ok(RasterSource::Png(Arc::new(ImageRaster::open_with_crs(
+                path, image_crs,
+            )?))),
             other if other.modality() == Modality::Vector => Err(ConvertError::invalid(format!(
                 "{} is a vector format; use Source::open instead",
                 other.label()
@@ -57,7 +81,7 @@ impl RasterSource {
             other => Err(ConvertError::UnsupportedFormat {
                 ext: other.label().to_string(),
                 path: path.display().to_string(),
-                supported: ".tif, .tiff, .cog",
+                supported: ".tif, .tiff, .cog, .jpg, .png",
             }),
         }
     }
@@ -65,6 +89,8 @@ impl RasterSource {
     pub fn format(&self) -> Format {
         match self {
             Self::GeoTiff(_) => Format::GeoTiff,
+            Self::Jpeg(_) => Format::Jpeg,
+            Self::Png(_) => Format::Png,
         }
     }
 
@@ -73,6 +99,7 @@ impl RasterSource {
     pub fn profile_cloned(&self) -> RasterProfile {
         match self {
             Self::GeoTiff(t) => t.profile().clone(),
+            Self::Jpeg(i) | Self::Png(i) => i.profile().clone(),
         }
     }
 
@@ -103,6 +130,11 @@ impl RasterSource {
                     }
                 }
                 Ok(())
+            }
+            // JPEG / PNG are single-tile (whole-image) sources.
+            Self::Jpeg(img) | Self::Png(img) => {
+                let tile = img.read_tile(0, 0, 0)?;
+                on_each(0, 0, 0, tile)
             }
         }
     }

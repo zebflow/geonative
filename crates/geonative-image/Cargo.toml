@@ -1,0 +1,26 @@
+[package]
+name = "geonative-image"
+description = "Pure-Rust reader for image + world-file rasters (JPG/PNG with .jgw/.pgw sidecars) for the geonative geospatial library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+
+[dependencies]
+geonative-core = { workspace = true, features = ["raster"] }
+thiserror = "2"
+# Focused pure-Rust decoders (smaller dep footprint than the `image` crate
+# umbrella). jpeg-decoder is decode-only; png is read+write but we only use
+# the decoder here.
+jpeg-decoder = "0.3"
+png = "0.17"
+
+[dev-dependencies]
+# Only used in tests for encoding fixture PNGs.
+png = "0.17"

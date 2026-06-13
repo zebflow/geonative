@@ -121,6 +121,8 @@ jobs:
       # Layer 3: depend on layer 2
       - run: /tmp/pub.sh geonative-geoparquet
       - run: /tmp/pub.sh geonative-mvt --new
+      - run: /tmp/pub.sh geonative-geotiff --new
+      - run: /tmp/pub.sh geonative-image --new
 
       # Layer 4: orchestration — depends on every format crate
       - run: /tmp/pub.sh geonative-convert --new

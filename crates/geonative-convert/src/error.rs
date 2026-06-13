@@ -44,6 +44,9 @@ pub enum ConvertError {
     #[error("geotiff: {0}")]
     GeoTiff(#[from] geonative_geotiff::GtiffError),
 
+    #[error("image: {0}")]
+    Image(#[from] geonative_image::ImageError),
+
     #[error("core: {0}")]
     Core(#[from] geonative_core::Error),
 
