@@ -57,8 +57,10 @@ pub mod dataset;
 pub mod error;
 pub mod format;
 pub mod geokeys;
+pub mod writer;
 
 pub use dataset::GeoTiff;
 pub use error::{GtiffError, Result};
+pub use writer::{profile_for_output, Compression, GeoTiffWriter, WriterOptions};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
