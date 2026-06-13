@@ -228,33 +228,72 @@ pub struct RasterConvertStats {
 
 /// Convert any supported raster input to a canonical COG output.
 ///
-/// v0.1 does NOT support `--to-crs` reproject for raster (raster warp +
-/// resampling lands in Phase F / v0.2). If `opts.to_crs` is set with a
-/// raster input, this returns an error rather than silently ignoring it.
+/// Sprint 14a additions:
+/// - `opts.to_crs` reprojects via `geonative-processing::raster::warp`
+/// - `opts.build_pyramid` auto-generates overview levels via
+///   `geonative-processing::raster::pyramid` (default: true)
 pub fn convert_raster(
     src: &Path,
     dst: &Path,
     opts: RasterConvertOptions,
 ) -> Result<RasterConvertStats> {
-    if opts.to_crs.is_some() {
-        return Err(ConvertError::invalid(
-            "raster reproject (--to-crs) is deferred to v0.2; convert without --to-crs for now",
-        ));
-    }
-
     let source = RasterSource::open(src)?;
-    let profile = source.profile_cloned();
-    let mut sink = RasterSink::create(dst, &profile, opts.sink)?;
+
+    // Materialise the input as a single tile-tree at level 0. For TIFF
+    // sources that already have pyramids we use the existing tiles; for
+    // image+sidecar inputs (which are single-tile already) this is
+    // straightforward.
+    let level0 = collect_level_zero(source)?;
+
+    // If a target CRS was requested, warp first.
+    let working = if let Some(target_crs) = &opts.to_crs {
+        let target_grid_width = level0.width;
+        let (gt, w, h) =
+            geonative_processing::compute_target_grid(&level0, target_crs, target_grid_width)?;
+        geonative_processing::warp_tile(
+            &level0,
+            target_crs,
+            gt,
+            w,
+            h,
+            &geonative_processing::WarpOptions::default(),
+        )?
+    } else {
+        level0
+    };
+
+    // Build overview pyramid if requested and the base is large enough.
+    let overviews: Vec<RasterTile> = if opts.build_pyramid {
+        geonative_processing::build_overviews(
+            &working,
+            geonative_processing::PyramidOptions::default(),
+        )
+    } else {
+        Vec::new()
+    };
+
+    // Build a sink profile from the (possibly warped) working tile.
+    let mut sink_profile = source_profile_from_tile(&working);
+    sink_profile.pyramid_levels = (overviews.len() + 1) as u8;
+
+    let mut sink = RasterSink::create(dst, &sink_profile, opts.sink)?;
 
     let start = Instant::now();
     let mut tiles: u64 = 0;
     let mut max_level: u8 = 0;
-    source.for_each_tile(|level, x, y, tile| {
-        sink.write_tile(level, x, y, &tile)?;
+
+    // Write level 0 (the working tile).
+    sink.write_tile(0, 0, 0, &working)?;
+    tiles += 1;
+
+    // Write each overview level.
+    for (i, ov) in overviews.iter().enumerate() {
+        let level = (i + 1) as u8;
+        sink.write_tile(level, 0, 0, ov)?;
         tiles += 1;
-        max_level = max_level.max(level);
-        Ok(())
-    })?;
+        max_level = level;
+    }
+
     sink.close()?;
 
     let elapsed = start.elapsed().as_secs_f64();
@@ -267,11 +306,114 @@ pub fn convert_raster(
     })
 }
 
+/// Stream every tile from `source` at level 0 into one big `RasterTile`.
+/// For TIFF sources, this stitches the source's internal tiles back into
+/// a single logical tile so warp / pyramid can operate on the whole image.
+/// For image+sidecar sources (which are already single-tile), this is a
+/// trivial copy.
+fn collect_level_zero(source: RasterSource) -> Result<RasterTile> {
+    use geonative_core::raster::{Band, GeoTransform, RasterProfile, RasterTile};
+    let profile = source.profile_cloned();
+    let total_w = profile.width;
+    let total_h = profile.height;
+
+    // Pre-allocate one big tile sized for the whole image.
+    let bands_init: Vec<Band> = profile
+        .bands
+        .iter()
+        .map(|d| {
+            Band::new(
+                d.clone(),
+                vec![0u8; (total_w as usize) * (total_h as usize) * d.dtype.size_bytes()],
+            )
+        })
+        .collect();
+    let mut big = RasterTile {
+        width: total_w,
+        height: total_h,
+        bands: bands_init,
+        geo_transform: profile.geo_transform,
+        crs: profile.crs.clone(),
+    };
+
+    let tile_w = profile.tile_size[0];
+    let tile_h = profile.tile_size[1];
+
+    // Stitch each level-0 source tile into the big buffer at its position.
+    let mut got_any = false;
+    source.for_each_tile(|level, tx, ty, tile| {
+        if level != 0 {
+            return Ok(());
+        }
+        got_any = true;
+        let x0 = tx * tile_w;
+        let y0 = ty * tile_h;
+        let copy_w = (tile.width).min(total_w.saturating_sub(x0));
+        let copy_h = (tile.height).min(total_h.saturating_sub(y0));
+        for (band_idx, src_band) in tile.bands.iter().enumerate() {
+            let bpp = src_band.descriptor.dtype.size_bytes();
+            let dst_band = &mut big.bands[band_idx];
+            for row in 0..copy_h as usize {
+                let src_off = row * (tile.width as usize) * bpp;
+                let dst_off = ((y0 as usize + row) * (total_w as usize) + x0 as usize) * bpp;
+                let len = (copy_w as usize) * bpp;
+                dst_band.data[dst_off..dst_off + len]
+                    .copy_from_slice(&src_band.data[src_off..src_off + len]);
+            }
+        }
+        Ok(())
+    })?;
+    if !got_any {
+        return Err(ConvertError::invalid("source had no level-0 tiles"));
+    }
+    // Quiet the unused import warning in dev builds.
+    let _ = GeoTransform::north_up;
+    let _ = RasterProfile {
+        width: 0,
+        height: 0,
+        bands: vec![],
+        geo_transform: GeoTransform::north_up(0.0, 0.0, 1.0, 1.0),
+        crs: profile.crs.clone(),
+        tile_size: [1, 1],
+        pyramid_levels: 1,
+    };
+    Ok(big)
+}
+
+/// Construct a fresh `RasterProfile` from a tile — used to seed the sink
+/// when warp has changed the working dimensions / CRS / geo-transform.
+fn source_profile_from_tile(tile: &RasterTile) -> geonative_core::raster::RasterProfile {
+    geonative_core::raster::RasterProfile {
+        width: tile.width,
+        height: tile.height,
+        bands: tile.bands.iter().map(|b| b.descriptor.clone()).collect(),
+        geo_transform: tile.geo_transform,
+        crs: tile.crs.clone(),
+        tile_size: [tile.width, tile.height],
+        pyramid_levels: 1,
+    }
+}
+
 /// Options for [`convert_raster`].
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RasterConvertOptions {
     pub sink: RasterSinkOptions,
-    /// Reserved for Phase F (raster warp). Setting this in v0.1 returns an
-    /// error so callers know reproject is not silently dropped.
+    /// If set, reproject the source raster into this CRS using
+    /// `geonative-processing::raster::warp`. Sprint 14a supports this for
+    /// single-tile sources (image+sidecar, small TIFFs); multi-tile TIFF
+    /// stitching lands in v0.2.
     pub to_crs: Option<geonative_core::Crs>,
+    /// Auto-build overview pyramid for the output. Default `true` — makes
+    /// the output a true COG, not just a tiled TIFF.
+    pub build_pyramid: bool,
+}
+
+impl Default for RasterConvertOptions {
+    fn default() -> Self {
+        Self {
+            sink: RasterSinkOptions::default(),
+            to_crs: None,
+            build_pyramid: true,
+        }
+    }
 }

@@ -267,20 +267,23 @@ impl<W: Write + Seek> GeoTiffWriter<W> {
     }
 
     fn tag_arrays_size_for_level(&self, level_idx: usize) -> Result<u64> {
-        // For each level we may need extra-data space for:
-        //   - TileOffsets (Long array, 4 bytes each)
-        //   - TileByteCounts (Long array, 4 bytes each)
-        //   - BitsPerSample (if >1 band): Short array, 2 bytes each
-        //   - ModelPixelScale (3 doubles = 24 bytes)         [level 0 only]
-        //   - ModelTiepoint (6 doubles = 48 bytes)           [level 0 only]
-        //   - GeoKeyDirectory (header + entries; only need for level 0)
+        // Extra-data space we'll write before the IFD body. Note: tags whose
+        // total payload ≤ 4 bytes are stored INLINE in the IFD entry and do
+        // NOT need external space. This mirrors the inline / external split
+        // in `write_ifd_for_level`.
         let tiles_count = self.tile_count_for_level(level_idx as u8)?;
         let nbands = self.profile.bands.len();
         let mut size: u64 = 0;
-        size += 4 * tiles_count as u64; // TileOffsets
-        size += 4 * tiles_count as u64; // TileByteCounts
+        let to_bytes = 4 * tiles_count as u64;
+        let bc_bytes = 4 * tiles_count as u64;
+        if to_bytes > 4 {
+            size += to_bytes;
+        }
+        if bc_bytes > 4 {
+            size += bc_bytes;
+        }
         if nbands > 1 {
-            size += 2 * nbands as u64; // BitsPerSample array
+            size += 2 * nbands as u64; // BitsPerSample array (always external if >1 band)
         }
         if level_idx == 0 {
             size += 24; // ModelPixelScale
@@ -294,9 +297,9 @@ impl<W: Write + Seek> GeoTiffWriter<W> {
         let scale = 1u32 << level;
         let w = (self.profile.width / scale).max(1);
         let h = (self.profile.height / scale).max(1);
-        let tw = self.profile.tile_size[0].max(1);
-        let th = self.profile.tile_size[1].max(1);
-        // ceil-div without using u32::div_ceil (1.85; our MSRV is 1.74)
+        // Match write_ifd_for_level's per-level tile-size clamping.
+        let tw = self.profile.tile_size[0].min(w).max(1);
+        let th = self.profile.tile_size[1].min(h).max(1);
         let gx = (w.saturating_add(tw - 1)) / tw;
         let gy = (h.saturating_add(th - 1)) / th;
         Ok(gx * gy)
@@ -314,18 +317,41 @@ impl<W: Write + Seek> GeoTiffWriter<W> {
         let scale = 1u32 << level;
         let w = (self.profile.width / scale).max(1);
         let h = (self.profile.height / scale).max(1);
-        let tw = self.profile.tile_size[0];
-        let th = self.profile.tile_size[1];
+        // Per-level tile dimensions: clamp to the level's actual image size
+        // so overview levels smaller than the canonical tile size record
+        // the right TileWidth/TileLength (otherwise the reader expects more
+        // pixels than the encoded tile actually contains → DEFLATE corrupt).
+        let tw = self.profile.tile_size[0].min(w);
+        let th = self.profile.tile_size[1].min(h);
 
         // 1) Write extra-data arrays first, recording their offsets.
-        let to_off = self.sink.stream_position()?;
-        for &o in tile_offsets {
-            self.sink.write_all(&(o as u32).to_le_bytes())?;
-        }
-        let bc_off = self.sink.stream_position()?;
-        for &c in tile_byte_counts {
-            self.sink.write_all(&(c as u32).to_le_bytes())?;
-        }
+        //
+        // TIFF tag entries have a 4-byte value/offset field. When the tag's
+        // total payload (count × dtype_size) is ≤ 4 bytes, the value lives
+        // INLINE in the entry — there's no external array. Skip writing the
+        // external array in that case (writing it would still work for the
+        // array bytes themselves, but the entry's value/offset field would
+        // then incorrectly point at the array's *position* rather than carry
+        // the inline value, and the reader treats short tags as inline by
+        // spec).
+        let to_off = if tile_offsets.len() * 4 > 4 {
+            let off = self.sink.stream_position()?;
+            for &o in tile_offsets {
+                self.sink.write_all(&(o as u32).to_le_bytes())?;
+            }
+            Some(off)
+        } else {
+            None
+        };
+        let bc_off = if tile_byte_counts.len() * 4 > 4 {
+            let off = self.sink.stream_position()?;
+            for &c in tile_byte_counts {
+                self.sink.write_all(&(c as u32).to_le_bytes())?;
+            }
+            Some(off)
+        } else {
+            None
+        };
         let bps_off = if nbands > 1 {
             let off = self.sink.stream_position()?;
             for band in &self.profile.bands {
@@ -426,13 +452,19 @@ impl<W: Write + Seek> GeoTiffWriter<W> {
             tags::TILE_OFFSETS,
             DType::Long,
             tile_offsets.len() as u32,
-            (to_off as u32).to_le_bytes(),
+            match to_off {
+                Some(off) => (off as u32).to_le_bytes(),
+                None => (tile_offsets[0] as u32).to_le_bytes(),
+            },
         ));
         entries.push((
             tags::TILE_BYTE_COUNTS,
             DType::Long,
             tile_byte_counts.len() as u32,
-            (bc_off as u32).to_le_bytes(),
+            match bc_off {
+                Some(off) => (off as u32).to_le_bytes(),
+                None => (tile_byte_counts[0] as u32).to_le_bytes(),
+            },
         ));
         entries.push((
             tags::SAMPLE_FORMAT,

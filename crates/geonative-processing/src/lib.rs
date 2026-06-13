@@ -23,7 +23,12 @@
 #![warn(missing_debug_implementations)]
 
 pub mod profile;
+pub mod raster;
 
 pub use profile::{profile, FieldStats, GeometryStats, ProfileOptions, ProfileReport};
+pub use raster::{
+    build_overviews, compute_target_grid, resample_tile, sample, warp_tile, PyramidOptions,
+    WarpOptions,
+};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

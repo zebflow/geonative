@@ -89,6 +89,7 @@ pub fn convert(src: &Path, dst: &Path, opts: ConvertOptions) -> Result<ConvertSt
             let raster_opts = crate::raster::RasterConvertOptions {
                 sink: crate::raster::RasterSinkOptions::default(),
                 to_crs: opts.to_crs,
+                build_pyramid: true,
             };
             let stats = crate::raster::convert_raster(src, dst, raster_opts)?;
             // Bridge raster stats onto the unified ConvertStats shape so

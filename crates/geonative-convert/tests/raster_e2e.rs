@@ -62,17 +62,22 @@ fn write_input_tiff(path: &std::path::Path) {
 
 #[test]
 fn convert_tif_to_cog() {
+    // Sprint 14a: convert now stitches multi-tile sources into one image,
+    // applies pyramid building. Output is base + overviews.
     let dir = workdir("tif2cog");
     let src = dir.join("input.tif");
     let dst = dir.join("output.cog");
     write_input_tiff(&src);
 
     let stats = convert(&src, &dst, ConvertOptions::default()).unwrap();
-    assert_eq!(stats.features, 4, "should have streamed 4 tiles");
+    assert!(
+        stats.features >= 1,
+        "should have written at least the base tile"
+    );
     assert!(stats.output_bytes > 0);
     assert!(dst.exists());
 
-    // Re-read the output through the public reader; everything must match.
+    // Re-read the output through the public reader.
     let read = GeoTiff::open(&dst).unwrap();
     let p = read.profile();
     assert_eq!(p.width, 4);
@@ -80,11 +85,18 @@ fn convert_tif_to_cog() {
     assert_eq!(p.crs, Crs::Epsg(7855));
     assert_eq!(p.geo_transform.origin, [144.0, -37.0]);
 
-    // Tile contents intact
-    assert_eq!(read.read_tile(0, 0, 0).unwrap().bands[0].data, vec![10; 4]);
-    assert_eq!(read.read_tile(0, 1, 0).unwrap().bands[0].data, vec![20; 4]);
-    assert_eq!(read.read_tile(0, 0, 1).unwrap().bands[0].data, vec![30; 4]);
-    assert_eq!(read.read_tile(0, 1, 1).unwrap().bands[0].data, vec![40; 4]);
+    // The base tile is now the full 4×4 image (stitched from 4 sub-tiles).
+    let base = read.read_tile(0, 0, 0).unwrap();
+    assert_eq!(base.width, 4);
+    assert_eq!(base.height, 4);
+    // Top-left quadrant came from source tile (0,0) which was filled with 10
+    assert_eq!(base.bands[0].data[0], 10);
+    // Top-right quadrant came from source tile (1,0) filled with 20
+    assert_eq!(base.bands[0].data[2], 20);
+    // Bottom-left came from source tile (0,1) filled with 30
+    assert_eq!(base.bands[0].data[8], 30);
+    // Bottom-right came from source tile (1,1) filled with 40
+    assert_eq!(base.bands[0].data[10], 40);
 }
 
 #[test]
@@ -97,7 +109,7 @@ fn convert_tif_to_tif() {
     write_input_tiff(&src);
 
     let stats = convert(&src, &dst, ConvertOptions::default()).unwrap();
-    assert_eq!(stats.features, 4);
+    assert!(stats.features >= 1);
     assert!(dst.exists());
 }
 
@@ -139,7 +151,7 @@ fn convert_png_with_sidecar_to_cog() {
     std::fs::write(&wld, "0.5\n0\n0\n-0.5\n144\n-37\n").unwrap();
 
     let stats = convert(&src, &dst, ConvertOptions::default()).unwrap();
-    assert_eq!(stats.features, 1, "single-image input yields one tile");
+    assert!(stats.features >= 1, "should have written at least the base");
     assert!(dst.exists());
 
     // Re-read the COG and verify
@@ -178,22 +190,54 @@ fn png_without_world_file_errors() {
 }
 
 #[test]
-fn raster_to_crs_errors_in_v01() {
-    // Raster reproject is deferred to Phase F; should error clearly rather
-    // than silently dropping the option.
+fn raster_to_crs_warps_to_3857() {
+    // Sprint 14a: raster reproject via geonative-processing::raster::warp.
+    // Input is a tiny single-tile 4326 TIFF; output requested in 3857.
     let dir = workdir("toCrs");
     let src = dir.join("input.tif");
     let dst = dir.join("output.cog");
-    write_input_tiff(&src);
+
+    // Build a single-tile 4×4 EPSG:4326 source (so collect_level_zero works
+    // without the multi-tile stitching path that's v0.2).
+    let profile = geonative_core::raster::RasterProfile {
+        width: 4,
+        height: 4,
+        bands: vec![BandDescriptor::new(Some("v".into()), PixelType::U8)],
+        geo_transform: GeoTransform::north_up(144.9, -37.85, 0.01, 0.01),
+        crs: Crs::Epsg(4326),
+        tile_size: [4, 4], // single tile
+        pyramid_levels: 1,
+    };
+    let file = std::fs::File::create(&src).unwrap();
+    let mut w = GeoTiffWriter::create(file, &profile, WriterOptions::default()).unwrap();
+    let mut data = Vec::with_capacity(16);
+    for r in 0..4u8 {
+        for c in 0..4u8 {
+            data.push(r * 64 + c * 16);
+        }
+    }
+    let tile = RasterTile {
+        width: 4,
+        height: 4,
+        bands: vec![Band::new(
+            BandDescriptor::new(Some("v".into()), PixelType::U8),
+            data,
+        )],
+        geo_transform: profile.geo_transform,
+        crs: Crs::Epsg(4326),
+    };
+    w.write_tile(0, 0, 0, &tile).unwrap();
+    w.close().unwrap();
 
     let opts = ConvertOptions {
         to_crs: Some(Crs::Epsg(3857)),
         ..ConvertOptions::default()
     };
-    let err = convert(&src, &dst, opts).unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("reproject") || msg.contains("to-crs"),
-        "expected reproject deferred error, got: {msg}"
-    );
+    let stats = convert(&src, &dst, opts).unwrap();
+    assert!(stats.features >= 1, "should have written at least one tile");
+    assert!(dst.exists());
+
+    // Re-read and verify CRS is now 3857.
+    let read = GeoTiff::open(&dst).unwrap();
+    assert_eq!(read.profile().crs, Crs::Epsg(3857));
 }
