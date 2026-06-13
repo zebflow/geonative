@@ -122,11 +122,7 @@ impl Band {
 
     pub fn pixel_count(&self) -> usize {
         let bpp = self.descriptor.dtype.size_bytes();
-        if bpp == 0 {
-            0
-        } else {
-            self.data.len() / bpp
-        }
+        self.data.len().checked_div(bpp).unwrap_or(0)
     }
 }
 
