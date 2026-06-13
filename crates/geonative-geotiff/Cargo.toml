@@ -1,0 +1,25 @@
+[package]
+name = "geonative-geotiff"
+description = "Pure-Rust GeoTIFF + COG reader (mmap-backed, LZW/DEFLATE/PackBits) for the geonative geospatial library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+categories.workspace = true
+keywords.workspace = true
+readme = "README.md"
+
+[dependencies]
+geonative-core = { workspace = true, features = ["raster"] }
+memmap2 = "0.9"
+thiserror = "2"
+# LZW codec (TIFF compression 5). Mature focused crate (~500 LOC).
+weezl = "0.1"
+# DEFLATE codec (TIFF compression 8). Pure-Rust via miniz_oxide backend.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[features]
+default = []

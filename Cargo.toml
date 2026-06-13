@@ -31,3 +31,4 @@ geonative-geojson = { version = "0.2.0", path = "crates/geonative-geojson" }
 geonative-processing = { version = "0.2.0", path = "crates/geonative-processing" }
 geonative-convert = { version = "0.2.0", path = "crates/geonative-convert" }
 geonative-proj = { version = "0.2.0", path = "crates/geonative-proj" }
+geonative-geotiff = { version = "0.2.0", path = "crates/geonative-geotiff" }
