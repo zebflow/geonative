@@ -69,7 +69,46 @@ pub fn reproject(src: &Path, dst: &Path, target_crs: Crs) -> Result<ConvertStats
     )
 }
 
+/// Convert from any supported input to any supported output. Dispatches on
+/// the input's modality:
+///
+/// - **Vector → Vector** (current vector pipeline; the same one Zebflow uses
+///   for filegdb / shapefile / geoparquet / geojson conversions today)
+/// - **Raster → Raster** (delegates to [`crate::convert_raster`])
+/// - **Cross-modal** (vector ↔ raster) — not yet supported; returns
+///   `ConvertError::InvalidArgument`. Rasterize / vectorize land with
+///   `geonative-processing` in Sprint 13 Phase F.
 pub fn convert(src: &Path, dst: &Path, opts: ConvertOptions) -> Result<ConvertStats> {
+    use crate::io::Modality;
+    let src_modality = crate::io::Format::from_path(src)?.modality();
+    let dst_modality = crate::io::Format::from_path(dst)?.modality();
+
+    match (src_modality, dst_modality) {
+        (Modality::Vector, Modality::Vector) => convert_vector(src, dst, opts),
+        (Modality::Raster, Modality::Raster) => {
+            let raster_opts = crate::raster::RasterConvertOptions {
+                sink: crate::raster::RasterSinkOptions::default(),
+                to_crs: opts.to_crs,
+            };
+            let stats = crate::raster::convert_raster(src, dst, raster_opts)?;
+            // Bridge raster stats onto the unified ConvertStats shape so
+            // callers don't have to branch.
+            Ok(ConvertStats {
+                features: stats.tiles,
+                elapsed_secs: stats.elapsed_secs,
+                output_bytes: stats.output_bytes,
+            })
+        }
+        (Modality::Vector, Modality::Raster) => Err(ConvertError::invalid(
+            "cross-modal vector → raster (rasterize) lands in Sprint 13 Phase F",
+        )),
+        (Modality::Raster, Modality::Vector) => Err(ConvertError::invalid(
+            "cross-modal raster → vector (vectorize) lands in Sprint 13 Phase F",
+        )),
+    }
+}
+
+fn convert_vector(src: &Path, dst: &Path, opts: ConvertOptions) -> Result<ConvertStats> {
     let source = Source::open(src, opts.layer.as_deref())?;
     let mut schema = source.schema_cloned()?;
     let expected = source.feature_count().unwrap_or(0);

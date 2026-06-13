@@ -41,6 +41,12 @@ pub enum ConvertError {
     #[error("geojson: {0}")]
     GeoJson(#[from] geonative_geojson::GeoJsonError),
 
+    #[error("geotiff: {0}")]
+    GeoTiff(#[from] geonative_geotiff::GtiffError),
+
+    #[error("core: {0}")]
+    Core(#[from] geonative_core::Error),
+
     #[error("decode feature {row}: {source}")]
     DecodeRow {
         row: u64,

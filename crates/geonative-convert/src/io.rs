@@ -35,6 +35,16 @@ pub enum Format {
     Shapefile,
     GeoParquet,
     GeoJson,
+    /// GeoTIFF (regular or Cloud Optimized).
+    GeoTiff,
+}
+
+/// Whether a format represents vector features or raster pixels.
+/// Used by the top-level `convert()` to route the request to the right pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Modality {
+    Vector,
+    Raster,
 }
 
 impl Format {
@@ -49,10 +59,11 @@ impl Format {
             "shp" => Ok(Self::Shapefile),
             "parquet" => Ok(Self::GeoParquet),
             "geojson" | "json" => Ok(Self::GeoJson),
+            "tif" | "tiff" | "cog" => Ok(Self::GeoTiff),
             other => Err(ConvertError::UnsupportedFormat {
                 ext: other.to_string(),
                 path: path.display().to_string(),
-                supported: ".gdb, .shp, .parquet, .geojson",
+                supported: ".gdb, .shp, .parquet, .geojson, .tif, .cog",
             }),
         }
     }
@@ -63,6 +74,15 @@ impl Format {
             Self::Shapefile => "shapefile",
             Self::GeoParquet => "geoparquet",
             Self::GeoJson => "geojson",
+            Self::GeoTiff => "geotiff",
+        }
+    }
+
+    /// Whether this format holds vector features or raster pixels.
+    pub fn modality(self) -> Modality {
+        match self {
+            Self::FileGdb | Self::Shapefile | Self::GeoParquet | Self::GeoJson => Modality::Vector,
+            Self::GeoTiff => Modality::Raster,
         }
     }
 }
@@ -117,6 +137,9 @@ impl Source {
             Format::Shapefile => Ok(Source::Shapefile(geonative_shapefile::open(path)?)),
             Format::GeoParquet => Ok(Source::GeoParquet(GeoParquetReader::open(path)?)),
             Format::GeoJson => Ok(Source::GeoJson(GeoJsonReader::open(path)?)),
+            Format::GeoTiff => Err(ConvertError::invalid(
+                "GeoTIFF is a raster format; use RasterSource::open instead",
+            )),
         }
     }
 

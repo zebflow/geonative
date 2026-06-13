@@ -90,6 +90,12 @@ pub fn inspect(source: &Path) -> Result<DatasetInspection> {
         Format::Shapefile => inspect_shapefile(source),
         Format::GeoParquet => inspect_geoparquet(source),
         Format::GeoJson => inspect_geojson(source),
+        // Raster has different shape (no layers/features/fields); use
+        // RasterSource::open(path)?.profile_cloned() instead. A polymorphic
+        // Inspection type that covers both modalities is a follow-up.
+        Format::GeoTiff => Err(crate::error::ConvertError::invalid(
+            "inspect doesn't support raster formats yet; call RasterSource::open + profile_cloned() instead",
+        )),
     }
 }
 

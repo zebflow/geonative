@@ -13,12 +13,13 @@ keywords.workspace = true
 readme = "README.md"
 
 [dependencies]
-geonative-core = { workspace = true }
+geonative-core = { workspace = true, features = ["raster"] }
 geonative-filegdb = { workspace = true }
 geonative-shapefile = { workspace = true }
 geonative-geoparquet = { workspace = true }
 geonative-geojson = { workspace = true }
 geonative-proj = { workspace = true }
+geonative-geotiff = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
