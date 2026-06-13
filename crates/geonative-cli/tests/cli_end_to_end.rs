@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use geonative_core::{
-    Coord, Crs, FieldDef, Feature, GeomField, Geometry, GeometryType, Schema, Value, ValueType,
+    Coord, Crs, Feature, FieldDef, GeomField, Geometry, GeometryType, Schema, Value, ValueType,
 };
 use geonative_geoparquet::{GeoParquetWriter, WriterOptions};
 
@@ -288,7 +288,8 @@ fn profile_emits_expected_json() {
         "profile failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("profile output is JSON");
+    let json: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("profile output is JSON");
 
     assert_eq!(json["feature_count"], 4);
     assert_eq!(json["geometry"]["null_count"], 0);

@@ -58,29 +58,28 @@ impl GeoJsonReader {
                     .ok_or_else(|| {
                         GeoJsonError::malformed("FeatureCollection missing 'features'")
                     })?;
-                arr.iter().map(parse_feature_or_geometry).collect::<Result<Vec<_>>>()?
+                arr.iter()
+                    .map(parse_feature_or_geometry)
+                    .collect::<Result<Vec<_>>>()?
             }
             "Feature" => vec![parse_feature(obj)?],
             // Bare geometry object: wrap into a featureless feature.
-            "Point"
-            | "LineString"
-            | "Polygon"
-            | "MultiPoint"
-            | "MultiLineString"
-            | "MultiPolygon"
-            | "GeometryCollection" => vec![RawFeature {
+            "Point" | "LineString" | "Polygon" | "MultiPoint" | "MultiLineString"
+            | "MultiPolygon" | "GeometryCollection" => vec![RawFeature {
                 fid: None,
                 geometry: Some(geom_from_json(&root)?),
                 properties: None,
             }],
-            other => return Err(GeoJsonError::unsupported(format!("top-level type '{other}'"))),
+            other => {
+                return Err(GeoJsonError::unsupported(format!(
+                    "top-level type '{other}'"
+                )))
+            }
         };
 
         // Schema inference over the property maps.
-        let all_props: Vec<Option<&JsonMap<String, Json>>> = raw_features
-            .iter()
-            .map(|f| f.properties.as_ref())
-            .collect();
+        let all_props: Vec<Option<&JsonMap<String, Json>>> =
+            raw_features.iter().map(|f| f.properties.as_ref()).collect();
         let fields = infer_fields(&all_props);
 
         // Geometry kind: homogeneous wins; mixed falls back to GeometryCollection.
@@ -150,8 +149,8 @@ fn parse_feature_or_geometry(v: &Json) -> Result<RawFeature> {
     match ty {
         "Feature" => parse_feature(obj),
         // Some feeds put bare geometries in a FeatureCollection's array. Accept.
-        "Point" | "LineString" | "Polygon" | "MultiPoint" | "MultiLineString"
-        | "MultiPolygon" | "GeometryCollection" => Ok(RawFeature {
+        "Point" | "LineString" | "Polygon" | "MultiPoint" | "MultiLineString" | "MultiPolygon"
+        | "GeometryCollection" => Ok(RawFeature {
             fid: None,
             geometry: Some(geom_from_json(v)?),
             properties: None,

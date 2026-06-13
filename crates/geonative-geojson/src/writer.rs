@@ -121,7 +121,9 @@ where
 mod tests {
     use super::*;
     use crate::reader::GeoJsonReader;
-    use geonative_core::{Coord, Crs, FieldDef, GeomField, Geometry, GeometryType, Value, ValueType};
+    use geonative_core::{
+        Coord, Crs, FieldDef, GeomField, Geometry, GeometryType, Value, ValueType,
+    };
 
     fn sample_schema() -> Schema {
         Schema::new(

@@ -62,8 +62,14 @@ mod tests {
         assert!(matches!(kind_for(4326).unwrap(), CrsKind::Geographic4326));
         assert!(matches!(kind_for(7844).unwrap(), CrsKind::Geographic4326));
         assert!(matches!(kind_for(3857).unwrap(), CrsKind::WebMercator));
-        assert!(matches!(kind_for(32754).unwrap(), CrsKind::TransverseMercator(_)));
-        assert!(matches!(kind_for(7855).unwrap(), CrsKind::TransverseMercator(_)));
+        assert!(matches!(
+            kind_for(32754).unwrap(),
+            CrsKind::TransverseMercator(_)
+        ));
+        assert!(matches!(
+            kind_for(7855).unwrap(),
+            CrsKind::TransverseMercator(_)
+        ));
     }
 
     #[test]
@@ -90,6 +96,9 @@ mod tests {
 
     #[test]
     fn unsupported_returns_error() {
-        assert!(matches!(kind_for(99999).unwrap_err(), ProjError::UnsupportedEpsg(99999)));
+        assert!(matches!(
+            kind_for(99999).unwrap_err(),
+            ProjError::UnsupportedEpsg(99999)
+        ));
     }
 }

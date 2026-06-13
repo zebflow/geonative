@@ -152,7 +152,10 @@ pub fn json_to_value(j: Option<&Json>, ty: ValueType) -> Value {
             .map(Value::Int32)
             .unwrap_or(Value::Null),
         ValueType::Int64 => v.as_i64().map(Value::Int64).unwrap_or(Value::Null),
-        ValueType::Float32 => v.as_f64().map(|f| Value::Float32(f as f32)).unwrap_or(Value::Null),
+        ValueType::Float32 => v
+            .as_f64()
+            .map(|f| Value::Float32(f as f32))
+            .unwrap_or(Value::Null),
         ValueType::Float64 => v.as_f64().map(Value::Float64).unwrap_or(Value::Null),
         ValueType::String => Value::String(json_as_string(v)),
         // Other ValueTypes (Binary, DateTime, Guid, Xml) aren't produced by
@@ -278,15 +281,27 @@ mod tests {
 
     #[test]
     fn json_to_value_round_trips_primitives() {
-        assert_eq!(json_to_value(Some(&json!(true)), ValueType::Bool), Value::Bool(true));
-        assert_eq!(json_to_value(Some(&json!(42)), ValueType::Int64), Value::Int64(42));
-        assert_eq!(json_to_value(Some(&json!(1.5)), ValueType::Float64), Value::Float64(1.5));
+        assert_eq!(
+            json_to_value(Some(&json!(true)), ValueType::Bool),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            json_to_value(Some(&json!(42)), ValueType::Int64),
+            Value::Int64(42)
+        );
+        assert_eq!(
+            json_to_value(Some(&json!(1.5)), ValueType::Float64),
+            Value::Float64(1.5)
+        );
         assert_eq!(
             json_to_value(Some(&json!("hi")), ValueType::String),
             Value::String("hi".to_string())
         );
         assert_eq!(json_to_value(None, ValueType::Int64), Value::Null);
-        assert_eq!(json_to_value(Some(&Json::Null), ValueType::Int64), Value::Null);
+        assert_eq!(
+            json_to_value(Some(&Json::Null), ValueType::Int64),
+            Value::Null
+        );
     }
 
     #[test]

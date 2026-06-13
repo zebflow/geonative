@@ -20,9 +20,7 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 
-use geonative_convert::{
-    convert, filter, inspect, metadata, ConvertOptions, SinkOptions, Source,
-};
+use geonative_convert::{convert, filter, inspect, metadata, ConvertOptions, SinkOptions, Source};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -303,8 +301,7 @@ fn run_metadata(args: MetadataArgs) -> Result<(), String> {
         serde_json::to_vec(&sidecar)
     }
     .map_err(|e| format!("serialising sidecar: {e}"))?;
-    std::fs::write(&target, bytes)
-        .map_err(|e| format!("writing {}: {e}", target.display()))?;
+    std::fs::write(&target, bytes).map_err(|e| format!("writing {}: {e}", target.display()))?;
     eprintln!("wrote sidecar to {}", target.display());
     Ok(())
 }
@@ -321,8 +318,8 @@ fn run_reproject(args: ReprojectArgs) -> Result<(), String> {
         to_crs: Some(target),
         progress: None,
     };
-    let stats = geonative_convert::convert(&args.input, &args.output, opts)
-        .map_err(|e| e.to_string())?;
+    let stats =
+        geonative_convert::convert(&args.input, &args.output, opts).map_err(|e| e.to_string())?;
     eprintln!(
         "reprojected {} features in {:.2}s — {}",
         stats.features,
@@ -334,7 +331,10 @@ fn run_reproject(args: ReprojectArgs) -> Result<(), String> {
 
 fn parse_crs(s: &str) -> Result<geonative_core::Crs, String> {
     let trimmed = s.trim();
-    let digits = trimmed.strip_prefix("EPSG:").or_else(|| trimmed.strip_prefix("epsg:")).unwrap_or(trimmed);
+    let digits = trimmed
+        .strip_prefix("EPSG:")
+        .or_else(|| trimmed.strip_prefix("epsg:"))
+        .unwrap_or(trimmed);
     let code: u32 = digits
         .parse()
         .map_err(|e| format!("--to-crs expects EPSG:NNNN or NNNN, got '{s}': {e}"))?;

@@ -76,6 +76,9 @@ mod tests {
         // disjoint
         assert!(!bbox_intersects([0.0, 0.0, 1.0, 1.0], [2.0, 2.0, 3.0, 3.0]));
         // a contains b
-        assert!(bbox_intersects([0.0, 0.0, 10.0, 10.0], [4.0, 4.0, 5.0, 5.0]));
+        assert!(bbox_intersects(
+            [0.0, 0.0, 10.0, 10.0],
+            [4.0, 4.0, 5.0, 5.0]
+        ));
     }
 }

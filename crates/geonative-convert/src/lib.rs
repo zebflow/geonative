@@ -48,7 +48,9 @@ pub mod metadata;
 pub use convert::{convert, reproject, ConvertOptions, ConvertStats};
 pub use error::{ConvertError, Result};
 pub use filter::{bbox_intersects, filter_bbox, Bbox2, FilterStats};
-pub use inspect::{inspect, CrsInspection, DatasetInspection, FieldInspection, GeometryInspection, LayerInspection};
+pub use inspect::{
+    inspect, CrsInspection, DatasetInspection, FieldInspection, GeometryInspection, LayerInspection,
+};
 pub use io::{Format, Sink, SinkOptions, Source};
 pub use metadata::{build as metadata, default_sidecar_path, Sidecar};
 

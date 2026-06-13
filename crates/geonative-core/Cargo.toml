@@ -23,3 +23,8 @@ default = []
 # format crates, PROJ wrappers). Z/M ordinates are silently dropped because
 # `geo-types` is strictly 2D.
 geo-types = ["dep:geo-types"]
+# Raster IR — RasterTile, Band, PixelType, GeoTransform, RasterProfile,
+# RasterLayer trait. Optional so vector-only consumers (most of today's
+# format crates) don't compile raster type definitions they never use.
+# Required by geonative-geotiff and any raster format / processing crate.
+raster = []

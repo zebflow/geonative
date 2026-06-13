@@ -19,6 +19,7 @@
 //! | [`dataset`] | Object-safe `Dataset` / `Layer` traits for format-polymorphic code |
 //! | [`error`] | Crate-wide `Error` + `Result` |
 //! | [`geo_types_interop`] *(feature-gated)* | Conversions to/from the `geo-types` crate |
+//! | [`raster`] *(feature-gated)* | Raster IR — `RasterTile`, `Band`, `PixelType`, `GeoTransform`, `RasterProfile`, `RasterLayer` trait |
 //!
 //! ## Why this crate exists
 //!
@@ -49,6 +50,11 @@
 //! - `geo-types` *(off by default)* — `From`/`Into` conversions between this
 //!   crate's [`Geometry`] and [`geo_types::Geometry`], plus `Coord`. Z/M is
 //!   silently dropped because `geo-types` is 2D.
+//! - `raster` *(off by default)* — adds the [`raster`] module with the
+//!   raster IR (`RasterTile`, `Band`, `PixelType`, `GeoTransform`,
+//!   `RasterProfile`, `RasterLayer` trait). Required by `geonative-geotiff`
+//!   and any raster format / processing crate. Vector-only consumers
+//!   don't need this feature.
 
 #![forbid(unsafe_code)]
 #![warn(missing_debug_implementations)]
@@ -64,6 +70,9 @@ pub mod wkb;
 
 #[cfg(feature = "geo-types")]
 pub mod geo_types_interop;
+
+#[cfg(feature = "raster")]
+pub mod raster;
 
 pub use crs::Crs;
 pub use dataset::{Dataset, Layer, SingleLayerDataset};

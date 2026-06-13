@@ -113,8 +113,7 @@ fn inspect_filegdb(source: &Path) -> Result<DatasetInspection> {
 
 fn inspect_shapefile(source: &Path) -> Result<DatasetInspection> {
     let shp = geonative_shapefile::open(source)?;
-    let layer =
-        layer_inspection_from("default", shp.schema(), Some(shp.feature_count() as i64));
+    let layer = layer_inspection_from("default", shp.schema(), Some(shp.feature_count() as i64));
     Ok(DatasetInspection {
         source: source.display().to_string(),
         format: "shapefile",
@@ -145,7 +144,11 @@ fn inspect_geojson(source: &Path) -> Result<DatasetInspection> {
     })
 }
 
-fn layer_inspection_from(name: &str, schema: &Schema, feature_count: Option<i64>) -> LayerInspection {
+fn layer_inspection_from(
+    name: &str,
+    schema: &Schema,
+    feature_count: Option<i64>,
+) -> LayerInspection {
     LayerInspection {
         name: name.to_string(),
         feature_count,

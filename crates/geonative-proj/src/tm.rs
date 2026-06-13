@@ -64,8 +64,8 @@ pub fn forward(p: &TmParams, c: &mut Coord) {
     // Conformal latitude tau (Karney calls it 'sinh^{-1} of t').
     let sin_phi = lat_rad.sin();
     let two_n_sqrt_over_one_plus_n = 2.0 * coeffs.n.sqrt() / (1.0 + coeffs.n);
-    let t = ((lat_rad.tan()).asinh() - two_n_sqrt_over_one_plus_n
-        * (two_n_sqrt_over_one_plus_n * sin_phi).atanh())
+    let t = ((lat_rad.tan()).asinh()
+        - two_n_sqrt_over_one_plus_n * (two_n_sqrt_over_one_plus_n * sin_phi).atanh())
     .sinh();
 
     let cos_dlon = dlon_rad.cos();
@@ -174,7 +174,8 @@ impl Coeffs {
                 - 7891.0 / 37_800.0 * n6,
             13.0 / 48.0 * n2 - 3.0 / 5.0 * n3 + 557.0 / 1440.0 * n4 + 281.0 / 630.0 * n5
                 - 1_983_433.0 / 1_935_360.0 * n6,
-            61.0 / 240.0 * n3 - 103.0 / 140.0 * n4 + 15_061.0 / 26_880.0 * n5
+            61.0 / 240.0 * n3 - 103.0 / 140.0 * n4
+                + 15_061.0 / 26_880.0 * n5
                 + 167_603.0 / 181_440.0 * n6,
             49_561.0 / 161_280.0 * n4 - 179.0 / 168.0 * n5 + 6_601_661.0 / 7_257_600.0 * n6,
             34_729.0 / 80_640.0 * n5 - 3_418_889.0 / 1_995_840.0 * n6,

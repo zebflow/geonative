@@ -486,7 +486,14 @@ mod tests {
         Geometry::Point(Coord::xy(x, y))
     }
 
-    fn feat(fid: i64, name: Option<&str>, score: i32, weight: Option<f64>, x: f64, y: f64) -> Feature {
+    fn feat(
+        fid: i64,
+        name: Option<&str>,
+        score: i32,
+        weight: Option<f64>,
+        x: f64,
+        y: f64,
+    ) -> Feature {
         let name_v = name
             .map(|s| Value::String(s.to_string()))
             .unwrap_or(Value::Null);
@@ -610,7 +617,11 @@ mod tests {
     fn null_geometry_counted() {
         let schema = mk_schema();
         let feats = vec![
-            Feature::new(Some(1), None, vec![Value::Null, Value::Int32(1), Value::Null]),
+            Feature::new(
+                Some(1),
+                None,
+                vec![Value::Null, Value::Int32(1), Value::Null],
+            ),
             Feature::new(
                 Some(2),
                 Some(pt(0.0, 0.0)),

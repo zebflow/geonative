@@ -57,9 +57,12 @@ pub fn from_json(obj: &Json) -> Result<Geometry> {
             Ok(Geometry::MultiPolygon(polys))
         }
         "GeometryCollection" => {
-            let inner = m.get("geometries").and_then(Json::as_array).ok_or_else(|| {
-                GeoJsonError::malformed("GeometryCollection requires 'geometries' array")
-            })?;
+            let inner = m
+                .get("geometries")
+                .and_then(Json::as_array)
+                .ok_or_else(|| {
+                    GeoJsonError::malformed("GeometryCollection requires 'geometries' array")
+                })?;
             let items = inner.iter().map(from_json).collect::<Result<Vec<_>>>()?;
             Ok(Geometry::GeometryCollection(items))
         }
