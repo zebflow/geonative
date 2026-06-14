@@ -115,8 +115,13 @@ jobs:
       - run: /tmp/pub.sh geonative-filegdb
       - run: /tmp/pub.sh geonative-shapefile
       - run: /tmp/pub.sh geonative-geojson
-      - run: /tmp/pub.sh geonative-processing
+
+      # geonative-proj is a layer-2 crate but `geonative-processing` (below)
+      # added it as a dep in v0.3.0 for the raster::warp module. Publish proj
+      # FIRST so processing's manifest can resolve `^0.3.0` against the
+      # crates.io index.
       - run: /tmp/pub.sh geonative-proj --new
+      - run: /tmp/pub.sh geonative-processing
 
       # Layer 3: depend on layer 2
       - run: /tmp/pub.sh geonative-geoparquet
