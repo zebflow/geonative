@@ -471,9 +471,10 @@ mod tests {
     }
 
     #[test]
-    fn fallback_to_conventional_geometry_column_name() {
-        // Write a small file, then strip the geo metadata externally is hard.
-        // Instead, just exercise the fallback path with a manual schema.
+    fn reader_sees_canonical_geometry_name_by_default() {
+        // Default writer policy (since v0.3.1): canonicalise any source
+        // geometry name to "geometry". The reader should see exactly that
+        // back, via the `primary_column` we wrote into geo metadata.
         let schema = Schema::new(
             vec![FieldDef::new("id", ValueType::Int32, false)],
             Some(GeomField::new("geom", GeometryType::Point)),
@@ -492,6 +493,37 @@ mod tests {
 
         let reader = GeoParquetReader::open(tmp.path()).unwrap();
         let geom_field = reader.schema().geometry.as_ref().unwrap();
-        assert_eq!(geom_field.name, "geom"); // matched via the geo `primary_column`
+        assert_eq!(geom_field.name, "geometry"); // canonicalised from "geom"
+    }
+
+    #[test]
+    fn reader_sees_preserved_geometry_name_when_opted_in() {
+        let schema = Schema::new(
+            vec![FieldDef::new("id", ValueType::Int32, false)],
+            Some(GeomField::new("geom", GeometryType::Point)),
+            Crs::Unknown,
+        );
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let file = std::fs::File::create(tmp.path()).unwrap();
+        let mut w = GeoParquetWriter::create(
+            file,
+            &schema,
+            WriterOptions {
+                preserve_source_geometry_name: true,
+                ..WriterOptions::default()
+            },
+        )
+        .unwrap();
+        w.write(&Feature::new(
+            Some(1),
+            Some(Geometry::Point(geonative_core::Coord::xy(1.0, 2.0))),
+            vec![Value::Int32(42)],
+        ))
+        .unwrap();
+        w.close().unwrap();
+
+        let reader = GeoParquetReader::open(tmp.path()).unwrap();
+        let geom_field = reader.schema().geometry.as_ref().unwrap();
+        assert_eq!(geom_field.name, "geom"); // preserved by opt-in
     }
 }

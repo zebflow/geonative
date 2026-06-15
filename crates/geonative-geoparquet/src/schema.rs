@@ -17,7 +17,19 @@ use crate::error::{GeoParquetError, Result};
 
 #[derive(Debug, Clone)]
 pub struct SchemaMapOptions {
+    /// Canonical name to write for the geometry column. Defaults to
+    /// `"geometry"` — the convention GeoParquet 1.1 examples and most
+    /// downstream tools (DuckDB, Polars, PostGIS COPY, GovEyes-style web
+    /// stacks) expect.
     pub geometry_column_name: String,
+    /// If `true`, keep whatever the source schema's `Schema.geometry.name`
+    /// says (e.g. `"SHAPE"` for FileGDB-origin files, `"geom"` for some
+    /// PostGIS dumps). Default `false` — i.e. **canonicalize on write**.
+    ///
+    /// Enable this only when you need round-trip identity (e.g. you're
+    /// rewriting an existing GeoParquet and don't want downstream tools
+    /// to see a schema change).
+    pub preserve_source_geometry_name: bool,
     pub add_bbox_columns: bool,
 }
 
@@ -25,6 +37,7 @@ impl Default for SchemaMapOptions {
     fn default() -> Self {
         Self {
             geometry_column_name: "geometry".into(),
+            preserve_source_geometry_name: false,
             add_bbox_columns: true,
         }
     }
@@ -55,11 +68,32 @@ pub fn map_schema(core: &CoreSchema, opts: &SchemaMapOptions) -> Result<MappedSc
     let mut fields: Vec<Field> = Vec::with_capacity(1 + core.fields.len() + 4);
 
     // Geometry column. WKB-encoded.
-    let geom_name = core
-        .geometry
-        .as_ref()
-        .map(|g| g.name.clone())
-        .unwrap_or_else(|| opts.geometry_column_name.clone());
+    //
+    // Naming policy: the canonical `opts.geometry_column_name` wins by
+    // default. The source's declared name is honoured only when the
+    // caller explicitly opted in to preservation. Either way, the chosen
+    // name flows through to GeoParquet `geo.primary_column` metadata so
+    // spec-aware readers stay correct.
+    let geom_name = if opts.preserve_source_geometry_name {
+        core.geometry
+            .as_ref()
+            .map(|g| g.name.clone())
+            .unwrap_or_else(|| opts.geometry_column_name.clone())
+    } else {
+        opts.geometry_column_name.clone()
+    };
+
+    // Collision check: if an attribute field already has this name, fail
+    // loudly rather than silently produce a malformed Arrow schema.
+    if let Some(clash) = core.fields.iter().find(|f| f.name == geom_name) {
+        return Err(GeoParquetError::Schema(format!(
+            "geometry column name '{geom_name}' collides with attribute field '{}'. \
+             Either rename the attribute upstream or set \
+             SchemaMapOptions::geometry_column_name to a non-conflicting value.",
+            clash.name
+        )));
+    }
+
     fields.push(Field::new(&geom_name, DataType::Binary, true));
     let geometry_col_index = 0;
 
@@ -168,17 +202,89 @@ mod tests {
     }
 
     #[test]
-    fn maps_geometry_first_then_attributes_then_bbox() {
+    fn maps_geometry_first_then_attributes_then_bbox_canonicalised_by_default() {
+        // Default policy: source said "SHAPE" but we canonicalise to "geometry"
+        // for downstream tools that expect the GeoParquet 1.1 convention.
         let core = build_core_schema();
         let m = map_schema(&core, &SchemaMapOptions::default()).unwrap();
         let names: Vec<&str> = m.arrow.fields().iter().map(|f| f.name().as_str()).collect();
         assert_eq!(
             names,
-            vec!["SHAPE", "UFI", "NAME", "CREATED", "xmin", "ymin", "xmax", "ymax"]
+            vec!["geometry", "UFI", "NAME", "CREATED", "xmin", "ymin", "xmax", "ymax"]
         );
         assert_eq!(m.geometry_col_index, 0);
         assert_eq!(m.attribute_col_indices, vec![1, 2, 3]);
         assert_eq!(m.bbox_col_indices, Some((4, 5, 6, 7)));
+    }
+
+    #[test]
+    fn preserves_source_geometry_name_when_opted_in() {
+        // preserve_source_geometry_name=true → keep "SHAPE" exactly as
+        // the source declared it. Round-trip identity.
+        let core = build_core_schema();
+        let m = map_schema(
+            &core,
+            &SchemaMapOptions {
+                preserve_source_geometry_name: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let names: Vec<&str> = m.arrow.fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names[0], "SHAPE");
+    }
+
+    #[test]
+    fn custom_canonical_name_honoured() {
+        // Callers can pick a different canonical name (e.g. "geom" for
+        // some PostGIS-friendly conventions).
+        let core = build_core_schema();
+        let m = map_schema(
+            &core,
+            &SchemaMapOptions {
+                geometry_column_name: "geom".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(m.arrow.field(0).name(), "geom");
+    }
+
+    #[test]
+    fn collision_with_attribute_name_errors_clearly() {
+        // If a source attribute is already named "geometry", canonicalising
+        // would create two columns with the same name — refuse loudly.
+        let core = CoreSchema::new(
+            vec![
+                FieldDef::new("geometry", ValueType::String, true), // ← attribute clash
+                FieldDef::new("name", ValueType::String, true),
+            ],
+            Some(GeomField::new("SHAPE", GeometryType::Point)),
+            Crs::Epsg(4326),
+        );
+        let err = map_schema(&core, &SchemaMapOptions::default()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("collides"),
+            "expected collision error, got: {msg}"
+        );
+        assert!(
+            msg.contains("geometry"),
+            "should name the conflicting column"
+        );
+    }
+
+    #[test]
+    fn fallback_canonical_name_when_source_has_no_geometry_field() {
+        // Schema with no geometry field (e.g. attribute-only layer that
+        // somehow still asks for a parquet write) → canonical name applies.
+        let core = CoreSchema::new(
+            vec![FieldDef::new("name", ValueType::String, true)],
+            None,
+            Crs::Unknown,
+        );
+        let m = map_schema(&core, &SchemaMapOptions::default()).unwrap();
+        assert_eq!(m.arrow.field(0).name(), "geometry");
     }
 
     #[test]

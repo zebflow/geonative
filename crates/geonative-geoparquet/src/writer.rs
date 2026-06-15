@@ -47,6 +47,13 @@ pub struct WriterOptions {
     /// Trade-off: peak memory is proportional to the dataset size. Use only
     /// when the data fits comfortably in RAM. Disabled by default.
     pub hilbert_sort: bool,
+    /// If `true`, write the geometry column using whatever name the source
+    /// schema declared (e.g. `"SHAPE"` from FileGDB). Default `false` —
+    /// the writer canonicalises to `"geometry"`, matching the GeoParquet
+    /// 1.1 convention every downstream tool defaults to. The geo metadata's
+    /// `primary_column` always matches the chosen physical column name, so
+    /// spec-aware readers are unaffected either way.
+    pub preserve_source_geometry_name: bool,
 }
 
 impl Default for WriterOptions {
@@ -56,6 +63,7 @@ impl Default for WriterOptions {
             compression: Compression::ZSTD(Default::default()),
             add_bbox_columns: true,
             hilbert_sort: false,
+            preserve_source_geometry_name: false,
         }
     }
 }
@@ -90,6 +98,7 @@ impl<W: Write + Send> GeoParquetWriter<W> {
     pub fn create(sink: W, schema: &CoreSchema, opts: WriterOptions) -> Result<Self> {
         let schema_map_opts = SchemaMapOptions {
             add_bbox_columns: opts.add_bbox_columns,
+            preserve_source_geometry_name: opts.preserve_source_geometry_name,
             ..Default::default()
         };
         let mapped = map_schema(schema, &schema_map_opts)?;
