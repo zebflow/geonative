@@ -145,7 +145,7 @@ mod tests {
                 let feat = Feature::new(
                     Some(i as i64 + 1),
                     Some(square_at(cx, cy, 0.1)),
-                    vec![Value::Int32(i as i32 + 1)],
+                    vec![Value::Int32(i + 1)],
                 );
                 w.write(&feat).unwrap();
             }

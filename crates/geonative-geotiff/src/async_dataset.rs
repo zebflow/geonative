@@ -188,7 +188,7 @@ impl AsyncCog {
         let lvl = self
             .levels
             .get(level as usize)
-            .ok_or_else(|| GtiffError::LevelOutOfRange {
+            .ok_or(GtiffError::LevelOutOfRange {
                 requested: level,
                 available: self.levels.len() as u8,
             })?;

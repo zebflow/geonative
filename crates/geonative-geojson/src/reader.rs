@@ -181,9 +181,12 @@ impl std::fmt::Debug for FeatureIter {
 }
 
 enum IterInner {
+    /// Streaming path. The schema (~240 B) is boxed so this variant
+    /// stays the same size as the others — keeps the enum compact and
+    /// satisfies clippy's `large_enum_variant`.
     Streaming {
         reader: std::io::BufReader<std::fs::File>,
-        schema: Schema,
+        schema: Box<Schema>,
     },
     /// Already-decoded features; the schema was already applied at
     /// construction time, so we don't need to carry it here.
@@ -200,9 +203,10 @@ impl IterInner {
         };
         match scanner::open_top_level(buf_reader) {
             Err(e) => IterInner::Failed(Some(e)),
-            Ok(scanner::TopLevel::Collection { reader, .. }) => {
-                IterInner::Streaming { reader, schema }
-            }
+            Ok(scanner::TopLevel::Collection { reader, .. }) => IterInner::Streaming {
+                reader,
+                schema: Box::new(schema),
+            },
             // Bare cases were normalised to Eager during open(); a
             // Streaming inner pointing at a bare file means open() chose
             // the wrong branch — shouldn't happen.
@@ -217,32 +221,27 @@ impl Iterator for FeatureIter {
     type Item = Result<Feature>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match &mut self.inner {
-                IterInner::Done => return None,
-                IterInner::Failed(slot) => {
-                    let err = slot.take()?;
-                    self.inner = IterInner::Done;
-                    return Some(Err(err));
-                }
-                IterInner::Eager(iter) => {
-                    return iter.next().map(Ok);
-                }
-                IterInner::Streaming { reader, schema } => {
-                    match scanner::next_feature_value(reader) {
-                        Err(e) => {
-                            self.inner = IterInner::Done;
-                            return Some(Err(e));
-                        }
-                        Ok(None) => {
-                            self.inner = IterInner::Done;
-                            return None;
-                        }
-                        Ok(Some(v)) => {
-                            let res = build_feature_from_value(&v, schema);
-                            return Some(res);
-                        }
+        // Every arm below either returns directly or transitions self.inner
+        // to Done — no loop needed (clippy::never_loop caught the wrapper).
+        match &mut self.inner {
+            IterInner::Done => None,
+            IterInner::Failed(slot) => {
+                let err = slot.take()?;
+                self.inner = IterInner::Done;
+                Some(Err(err))
+            }
+            IterInner::Eager(iter) => iter.next().map(Ok),
+            IterInner::Streaming { reader, schema } => {
+                match scanner::next_feature_value(reader) {
+                    Err(e) => {
+                        self.inner = IterInner::Done;
+                        Some(Err(e))
                     }
+                    Ok(None) => {
+                        self.inner = IterInner::Done;
+                        None
+                    }
+                    Ok(Some(v)) => Some(build_feature_from_value(&v, schema)),
                 }
             }
         }

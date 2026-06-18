@@ -165,7 +165,7 @@ pub fn decode(bytes: &[u8]) -> Result<Vec<Entry>> {
 /// This is the core lookup hot-path: the reader calls it once per
 /// directory level to find the right tile entry (or a leaf-dir pointer
 /// to chase).
-pub fn find_tile<'a>(entries: &'a [Entry], tile_id: u64) -> Option<&'a Entry> {
+pub fn find_tile(entries: &[Entry], tile_id: u64) -> Option<&Entry> {
     // partition_point gives us the first entry with tile_id > target.
     let idx = entries.partition_point(|e| e.tile_id <= tile_id);
     if idx == 0 {

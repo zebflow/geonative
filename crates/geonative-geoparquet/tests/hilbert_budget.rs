@@ -51,7 +51,7 @@ fn write_errors_with_clean_budget_exceeded_before_oom() {
         let feat = Feature::new(
             Some(i as i64 + 1),
             Some(heavy_polygon(5_000, i as f64 * 0.01)),
-            vec![Value::Int32(i as i32 + 1)],
+            vec![Value::Int32(i + 1)],
         );
         match w.write(&feat) {
             Ok(()) => continue,
@@ -99,7 +99,7 @@ fn small_dataset_under_budget_still_completes() {
             let feat = Feature::new(
                 Some(i as i64 + 1),
                 Some(heavy_polygon(500, i as f64 * 0.01)),
-                vec![Value::Int32(i as i32 + 1)],
+                vec![Value::Int32(i + 1)],
             );
             w.write(&feat).expect("each write should succeed under budget");
         }
@@ -127,7 +127,7 @@ fn non_hilbert_path_ignores_budget() {
             let feat = Feature::new(
                 Some(i as i64 + 1),
                 Some(heavy_polygon(500, i as f64 * 0.01)),
-                vec![Value::Int32(i as i32 + 1)],
+                vec![Value::Int32(i + 1)],
             );
             w.write(&feat).expect("streaming path should ignore the budget");
         }
