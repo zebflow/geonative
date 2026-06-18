@@ -107,14 +107,18 @@ jobs:
       # Layer 1: foundation (existing crate, just bumps in subsequent releases)
       - run: /tmp/pub.sh geonative-core
 
-      # Layer 2: depend only on core. Mark `--new` for crate names that
-      # have NEVER been published to crates.io before (first 0.x release).
-      # After v0.2.0 these all become existing crates.
+      # Layer 2: depend only on core (or nothing). Mark `--new` for crate
+      # names that have NEVER been published to crates.io before (first
+      # 0.x release). After publication they become existing crates.
       - run: /tmp/pub.sh geonative-utils
       - run: /tmp/pub.sh geonative-tile
       - run: /tmp/pub.sh geonative-filegdb
       - run: /tmp/pub.sh geonative-shapefile
       - run: /tmp/pub.sh geonative-geojson
+      # geonative-pmtiles is a brand-new crate in v0.4.0 — no internal
+      # deps (just thiserror + flate2 + optional object_store), so ordering
+      # is flexible. `--new` for the rate-limit window.
+      - run: /tmp/pub.sh geonative-pmtiles --new
 
       # geonative-proj is a layer-2 crate but `geonative-processing` (below)
       # added it as a dep in v0.3.0 for the raster::warp module. Publish proj
