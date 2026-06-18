@@ -59,8 +59,14 @@ pub mod format;
 pub mod geokeys;
 pub mod writer;
 
+#[cfg(feature = "s3")]
+pub mod async_dataset;
+
 pub use dataset::GeoTiff;
 pub use error::{GtiffError, Result};
 pub use writer::{profile_for_output, Compression, GeoTiffWriter, WriterOptions};
+
+#[cfg(feature = "s3")]
+pub use async_dataset::AsyncCog;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

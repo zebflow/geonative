@@ -28,43 +28,69 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 /// One pass over the property maps of every feature → `(field defs, key order)`.
 /// Returns fields ordered by **first-seen** key for stability across runs.
+///
+/// Eager — collects all maps into the slice before computing. For very
+/// large feeds use [`FieldsAccumulator`] directly so you can `observe`
+/// one feature at a time without holding the whole property tree in RAM.
 pub fn infer_fields(all_props: &[Option<&JsonMap<String, Json>>]) -> Vec<FieldDef> {
-    let mut order: Vec<String> = Vec::new();
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    let mut observations: BTreeMap<String, KeyObs> = BTreeMap::new();
-
+    let mut acc = FieldsAccumulator::new();
     for props in all_props {
+        acc.observe(*props);
+    }
+    acc.finalize()
+}
+
+/// Streaming version of [`infer_fields`]. Call [`observe`](Self::observe)
+/// once per feature's `properties` map (or `None` for properties-less
+/// features), then [`finalize`](Self::finalize) to get the inferred
+/// `FieldDef` list.
+///
+/// Memory is bounded to (#distinct keys × ~64 B observation record) +
+/// the key strings themselves — independent of the feature count.
+#[derive(Debug, Default)]
+pub struct FieldsAccumulator {
+    order: Vec<String>,
+    seen: BTreeSet<String>,
+    observations: BTreeMap<String, KeyObs>,
+}
+
+impl FieldsAccumulator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn observe(&mut self, props: Option<&JsonMap<String, Json>>) {
         let Some(map) = props else {
-            // Feature had no properties: every previously-seen field is now nullable.
-            for k in &order {
-                observations.entry(k.clone()).or_default().nullable = true;
+            for k in &self.order {
+                self.observations.entry(k.clone()).or_default().nullable = true;
             }
-            continue;
+            return;
         };
         let mut visited_this_row: BTreeSet<&str> = BTreeSet::new();
         for (k, v) in map.iter() {
-            if seen.insert(k.clone()) {
-                order.push(k.clone());
+            if self.seen.insert(k.clone()) {
+                self.order.push(k.clone());
             }
             visited_this_row.insert(k);
-            let obs = observations.entry(k.clone()).or_default();
+            let obs = self.observations.entry(k.clone()).or_default();
             obs.observe(v);
         }
-        // Any previously-seen key not present in this row → nullable.
-        for k in &order {
+        for k in &self.order {
             if !visited_this_row.contains(k.as_str()) {
-                observations.entry(k.clone()).or_default().nullable = true;
+                self.observations.entry(k.clone()).or_default().nullable = true;
             }
         }
     }
 
-    order
-        .into_iter()
-        .map(|name| {
-            let obs = observations.remove(&name).unwrap_or_default();
-            FieldDef::new(name, obs.resolve_type(), obs.nullable)
-        })
-        .collect()
+    pub fn finalize(mut self) -> Vec<FieldDef> {
+        self.order
+            .into_iter()
+            .map(|name| {
+                let obs = self.observations.remove(&name).unwrap_or_default();
+                FieldDef::new(name, obs.resolve_type(), obs.nullable)
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Default)]

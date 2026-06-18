@@ -77,7 +77,7 @@ pub struct GeoMetadataParsed {
 pub fn parse_geo_metadata(json: &str) -> GeoMetadataParsed {
     GeoMetadataParsed {
         primary_column: extract_str_value(json, "\"primary_column\""),
-        epsg_code: extract_epsg_code(json),
+        epsg_code: extract_epsg_code(json).or_else(|| extract_epsg_from_name(json)),
     }
 }
 
@@ -112,6 +112,36 @@ fn extract_epsg_code(json: &str) -> Option<u32> {
         return None;
     }
     trimmed[..end].parse::<u32>().ok()
+}
+
+/// Fallback for files that only declare CRS via `"name":"…"` instead of the
+/// canonical `id.authority`/`id.code` clause. Recognises the two shorthand
+/// forms seen in the wild from DuckDB, GeoPandas, GeoServer exports:
+///
+/// - `"name":"EPSG:3857"` (with optional whitespace after the colon)
+/// - `"name":"urn:ogc:def:crs:EPSG::3857"` (OGC URN form)
+///
+/// Bare datum-name strings (`"name":"WGS 84"`) aren't matched here — that
+/// path requires the inline-name table in `geonative-core`'s `Crs::epsg_code`,
+/// which only kicks in for `Crs::Wkt`. Adding that here would couple two
+/// crates' parsers; we keep this scope tight.
+fn extract_epsg_from_name(json: &str) -> Option<u32> {
+    let name = extract_str_value(json, "\"name\"")?;
+    epsg_from_name_string(&name)
+}
+
+fn epsg_from_name_string(name: &str) -> Option<u32> {
+    let lower = name.to_ascii_lowercase();
+    // URN form: "urn:ogc:def:crs:EPSG::3857" — the double colon is required.
+    if lower.starts_with("urn:ogc:def:crs:epsg:") {
+        let (_, code_str) = name.split_once("::")?;
+        return code_str.trim().parse::<u32>().ok();
+    }
+    // Prefix form: "EPSG:3857" (case-insensitive, optional space after colon).
+    if let Some(rest) = lower.strip_prefix("epsg:") {
+        return rest.trim().parse::<u32>().ok();
+    }
+    None
 }
 
 fn json_escape(s: &str) -> String {
@@ -193,6 +223,44 @@ mod tests {
         let parsed = parse_geo_metadata(&json);
         assert_eq!(parsed.primary_column.as_deref(), Some("SHAPE"));
         assert_eq!(parsed.epsg_code, Some(4326));
+    }
+
+    #[test]
+    fn parse_epsg_prefix_in_name_field() {
+        // DuckDB / GeoPandas style: minimal PROJJSON with only "name".
+        let json = r#"{"version":"1.1.0","primary_column":"geometry","columns":{"geometry":{"encoding":"WKB","geometry_types":["Polygon"],"crs":{"name":"EPSG:3857"},"edges":"planar"}}}"#;
+        let parsed = parse_geo_metadata(json);
+        assert_eq!(parsed.primary_column.as_deref(), Some("geometry"));
+        assert_eq!(parsed.epsg_code, Some(3857));
+    }
+
+    #[test]
+    fn parse_epsg_prefix_lowercase_and_spaced() {
+        let json = r#"{"crs":{"name":"epsg: 4326"}}"#;
+        assert_eq!(parse_geo_metadata(json).epsg_code, Some(4326));
+    }
+
+    #[test]
+    fn parse_urn_form_in_name_field() {
+        // OGC URN form as seen in older GeoServer / WFS exports.
+        let json = r#"{"crs":{"name":"urn:ogc:def:crs:EPSG::7844"}}"#;
+        assert_eq!(parse_geo_metadata(json).epsg_code, Some(7844));
+    }
+
+    #[test]
+    fn parse_prefers_authority_over_name_when_both_present() {
+        // If a writer is generous and emits both, the canonical authority
+        // clause wins (matches the order GDAL trusts).
+        let json = r#"{"crs":{"name":"EPSG:9999","id":{"authority":"EPSG","code":4326}}}"#;
+        assert_eq!(parse_geo_metadata(json).epsg_code, Some(4326));
+    }
+
+    #[test]
+    fn parse_unrecognised_name_falls_through_to_none() {
+        // Bare datum names (no EPSG prefix) aren't matched here — that path
+        // would need the WKT name table from geonative-core.
+        let json = r#"{"crs":{"name":"WGS 84 / Pseudo-Mercator"}}"#;
+        assert_eq!(parse_geo_metadata(json).epsg_code, None);
     }
 
     #[test]

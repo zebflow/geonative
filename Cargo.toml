@@ -3,10 +3,10 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-# All 13 implemented crates inherit this version. The only crate that
+# All 14 implemented crates inherit this version. The only crate that
 # overrides is the meta `geonative` umbrella, which stays at 0.0.1 as a
 # placeholder until its feature-gated re-export surface stabilises.
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/zebflow/geonative"
@@ -20,16 +20,17 @@ keywords = ["geospatial", "gis", "geo"]
 # `geonative-core = { workspace = true }` so the version + path live in one
 # place and stay in sync.
 [workspace.dependencies]
-geonative-core = { version = "0.3.1", path = "crates/geonative-core" }
-geonative-filegdb = { version = "0.3.1", path = "crates/geonative-filegdb" }
-geonative-geoparquet = { version = "0.3.1", path = "crates/geonative-geoparquet" }
-geonative-tile = { version = "0.3.1", path = "crates/geonative-tile" }
-geonative-mvt = { version = "0.3.1", path = "crates/geonative-mvt" }
-geonative-utils = { version = "0.3.1", path = "crates/geonative-utils" }
-geonative-shapefile = { version = "0.3.1", path = "crates/geonative-shapefile" }
-geonative-geojson = { version = "0.3.1", path = "crates/geonative-geojson" }
-geonative-processing = { version = "0.3.1", path = "crates/geonative-processing" }
-geonative-convert = { version = "0.3.1", path = "crates/geonative-convert" }
-geonative-proj = { version = "0.3.1", path = "crates/geonative-proj" }
-geonative-geotiff = { version = "0.3.1", path = "crates/geonative-geotiff" }
-geonative-image = { version = "0.3.1", path = "crates/geonative-image" }
+geonative-core = { version = "0.4.0", path = "crates/geonative-core" }
+geonative-filegdb = { version = "0.4.0", path = "crates/geonative-filegdb" }
+geonative-geoparquet = { version = "0.4.0", path = "crates/geonative-geoparquet" }
+geonative-tile = { version = "0.4.0", path = "crates/geonative-tile" }
+geonative-mvt = { version = "0.4.0", path = "crates/geonative-mvt" }
+geonative-utils = { version = "0.4.0", path = "crates/geonative-utils" }
+geonative-shapefile = { version = "0.4.0", path = "crates/geonative-shapefile" }
+geonative-geojson = { version = "0.4.0", path = "crates/geonative-geojson" }
+geonative-processing = { version = "0.4.0", path = "crates/geonative-processing" }
+geonative-convert = { version = "0.4.0", path = "crates/geonative-convert" }
+geonative-proj = { version = "0.4.0", path = "crates/geonative-proj" }
+geonative-geotiff = { version = "0.4.0", path = "crates/geonative-geotiff" }
+geonative-image = { version = "0.4.0", path = "crates/geonative-image" }
+geonative-pmtiles = { version = "0.4.0", path = "crates/geonative-pmtiles" }

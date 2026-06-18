@@ -26,6 +26,23 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
+# Optional async/object-store stack. Mirrors geonative-geoparquet's `s3`
+# feature — same Tokio/futures/object_store versions to share types.
+tokio = { version = "1", optional = true, features = ["rt", "io-util", "macros"] }
+object_store = { version = "0.13", optional = true, features = ["aws"] }
+futures = { version = "0.3", optional = true }
+
+[features]
+default = []
+# Object-store-backed async convert. Pulls the matching `s3` feature on
+# geonative-geoparquet so the async reader/writer ride along.
+s3 = ["dep:tokio", "dep:object_store", "dep:futures", "geonative-geoparquet/s3"]
+
 [dev-dependencies]
 # For end-to-end raster tests that synthesise PNG fixtures on disk.
 png = "0.17"
+tempfile = "3"
+# Async test infra. Only pulled in for `cargo test --features s3`.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "macros", "fs"] }
+object_store = { version = "0.13", features = ["aws"] }
+futures = "0.3"

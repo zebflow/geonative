@@ -31,31 +31,31 @@ use crate::format::{compression, tags, ByteOrder, Header, Ifd};
 use crate::geokeys;
 
 /// Per-level decoded metadata, cached so we don't re-walk the IFD on every
-/// `read_tile`.
+/// `read_tile`. `pub(crate)` so [`crate::async_dataset`] can reuse it.
 #[derive(Debug, Clone)]
-struct LevelMeta {
+pub(crate) struct LevelMeta {
     /// Pixel dimensions of this pyramid level.
-    width: u32,
-    height: u32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
     /// Internal tile dimensions (256, 256 for typical COGs).
-    tile_width: u32,
-    tile_height: u32,
+    pub(crate) tile_width: u32,
+    pub(crate) tile_height: u32,
     /// Tile-grid dimensions (`ceil(width / tile_width) × ceil(height / tile_height)`).
-    grid_x: u32,
-    grid_y: u32,
+    pub(crate) grid_x: u32,
+    pub(crate) grid_y: u32,
     /// `TileOffsets` array — `grid_x * grid_y` entries, byte position of
     /// each tile's compressed data.
-    tile_offsets: Vec<u64>,
+    pub(crate) tile_offsets: Vec<u64>,
     /// `TileByteCounts` — compressed length of each tile.
-    tile_byte_counts: Vec<u64>,
+    pub(crate) tile_byte_counts: Vec<u64>,
     /// `Compression` tag value.
-    compression: u16,
+    pub(crate) compression: u16,
     /// `BitsPerSample` — one per band.
-    bits_per_sample: Vec<u16>,
+    pub(crate) bits_per_sample: Vec<u16>,
     /// `SampleFormat` — 1=uint, 2=int, 3=float (one per band; defaults to uint).
-    sample_format: Vec<u16>,
+    pub(crate) sample_format: Vec<u16>,
     /// Per-level geo-transform (level N is `(2^N)x` coarser than level 0).
-    geo_transform: GeoTransform,
+    pub(crate) geo_transform: GeoTransform,
 }
 
 #[derive(Debug)]
@@ -195,50 +195,57 @@ impl RasterLayer for GeoTiff {
         }
         let compressed = &bytes[offset..offset + byte_count];
 
-        // Allocate the uncompressed buffer.
-        let pixels = (lvl.tile_width as usize) * (lvl.tile_height as usize);
-        // bits-per-sample → bytes-per-sample (8 = 1, 16 = 2, etc.).
-        // Bit shift rather than `(b + 7) / 8` to avoid clippy's div_ceil
-        // hint (div_ceil is 1.85; our MSRV is 1.74).
-        let bytes_per_pixel: usize = lvl
-            .bits_per_sample
-            .iter()
-            .map(|bps| ((*bps as usize) + 7) >> 3)
-            .sum();
-        let mut out = vec![0u8; pixels * bytes_per_pixel];
-
-        codec::decode_into(lvl.compression, compressed, &mut out)
-            .map_err(geonative_core::Error::from)?;
-
-        // Split out into separate bands. v0.1 assumes chunky (interleaved)
-        // pixel layout PlanarConfiguration=1. PlanarConfiguration=2
-        // (planar) is deferred.
-        let band_descriptors: Vec<&BandDescriptor> = self.profile.bands.iter().collect();
-        let bands = split_interleaved_to_bands(&out, &band_descriptors, pixels)
-            .map_err(geonative_core::Error::from)?;
-
-        // Per-tile geo-transform: origin shifts by the tile's grid position.
-        let lvl_gt = lvl.geo_transform;
-        let tile_gt = GeoTransform {
-            origin: [
-                lvl_gt.origin[0] + (x as f64) * (lvl.tile_width as f64) * lvl_gt.pixel_size[0],
-                lvl_gt.origin[1] + (y as f64) * (lvl.tile_height as f64) * lvl_gt.pixel_size[1],
-            ],
-            pixel_size: lvl_gt.pixel_size,
-            rotation: lvl_gt.rotation,
-        };
-
-        Ok(RasterTile {
-            width: lvl.tile_width,
-            height: lvl.tile_height,
-            bands,
-            geo_transform: tile_gt,
-            crs: self.profile.crs.clone(),
-        })
+        decode_tile_into_rastertile(lvl, compressed, x, y, &self.profile)
+            .map_err(geonative_core::Error::from)
     }
 }
 
-fn parse_level_meta(
+/// Decode one tile's compressed bytes into a [`RasterTile`]. Shared by
+/// the sync (mmap-backed) and async (object-store-backed) datasets so the
+/// codec / band-split / geo-transform logic lives in exactly one place.
+pub(crate) fn decode_tile_into_rastertile(
+    lvl: &LevelMeta,
+    compressed: &[u8],
+    x: u32,
+    y: u32,
+    profile: &RasterProfile,
+) -> Result<RasterTile> {
+    let pixels = (lvl.tile_width as usize) * (lvl.tile_height as usize);
+    // bits-per-sample → bytes-per-sample (8 = 1, 16 = 2, etc.).
+    // Bit shift rather than `(b + 7) / 8` to avoid clippy's div_ceil
+    // hint (div_ceil is 1.85; our MSRV is 1.74).
+    let bytes_per_pixel: usize = lvl
+        .bits_per_sample
+        .iter()
+        .map(|bps| ((*bps as usize) + 7) >> 3)
+        .sum();
+    let mut out = vec![0u8; pixels * bytes_per_pixel];
+    codec::decode_into(lvl.compression, compressed, &mut out)?;
+
+    // v0.1 assumes chunky (interleaved) PlanarConfiguration=1.
+    let band_descriptors: Vec<&BandDescriptor> = profile.bands.iter().collect();
+    let bands = split_interleaved_to_bands(&out, &band_descriptors, pixels)?;
+
+    let lvl_gt = lvl.geo_transform;
+    let tile_gt = GeoTransform {
+        origin: [
+            lvl_gt.origin[0] + (x as f64) * (lvl.tile_width as f64) * lvl_gt.pixel_size[0],
+            lvl_gt.origin[1] + (y as f64) * (lvl.tile_height as f64) * lvl_gt.pixel_size[1],
+        ],
+        pixel_size: lvl_gt.pixel_size,
+        rotation: lvl_gt.rotation,
+    };
+
+    Ok(RasterTile {
+        width: lvl.tile_width,
+        height: lvl.tile_height,
+        bands,
+        geo_transform: tile_gt,
+        crs: profile.crs.clone(),
+    })
+}
+
+pub(crate) fn parse_level_meta(
     ifd: &Ifd,
     file: &[u8],
     order: ByteOrder,

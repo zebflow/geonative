@@ -1,6 +1,6 @@
 [package]
-name = "geonative-geotiff"
-description = "Pure-Rust GeoTIFF + COG reader (mmap-backed, LZW/DEFLATE/PackBits) for the geonative geospatial library"
+name = "geonative-pmtiles"
+description = "Pure-Rust PMTiles v3 reader and writer (single-file tile archive with Hilbert-ordered directories) for the geonative geospatial library"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,29 +10,23 @@ authors.workspace = true
 rust-version.workspace = true
 categories.workspace = true
 keywords.workspace = true
-readme = "README.md"
 
 [dependencies]
-geonative-core = { workspace = true, features = ["raster"] }
-memmap2 = "0.9"
 thiserror = "2"
-# LZW codec (TIFF compression 5). Mature focused crate (~500 LOC).
-weezl = "0.1"
-# DEFLATE codec (TIFF compression 8). Pure-Rust via miniz_oxide backend.
+# Gzip is the PMTiles spec's default for both internal-dirs and tiles.
+# Pure-Rust backend keeps us cross-compile-friendly.
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
-# Optional async / object-store stack (S3, Azure Blob, GCS, R2, local-fs,
-# HTTP). Enabled via `s3` feature; sync mmap workflows have zero overhead.
+# Optional async / object-store stack. Enabled via `s3` feature.
 tokio = { version = "1", optional = true, features = ["rt", "io-util", "macros"] }
 object_store = { version = "0.13", optional = true, features = ["aws"] }
 bytes = { version = "1", optional = true }
 
 [features]
 default = []
-# Adds the async, object-store-backed COG reader (`AsyncCog`). Range-
-# fetches the TIFF header + IFDs once at open, then per-tile fetches on
-# `read_tile_async`. Lets a 50 GB COG in S3 serve a 256×256 tile from
-# ~one HEAD + ~two range GETs without ever downloading the whole file.
+# Async, object-store-backed reader. Range-fetches the 127 B header, then
+# the root directory, then per-tile reads. A 10 GB PMTiles in S3 serves a
+# single tile from ~3 GETs total without ever downloading the whole file.
 s3 = ["dep:tokio", "dep:object_store", "dep:bytes"]
 
 [dev-dependencies]

@@ -130,7 +130,7 @@ fn file_geo_metadata(file: &File) -> Result<Option<String>> {
 /// - the reconstructed user-facing `Schema`
 /// - the Arrow-column index of the geometry column
 /// - the Arrow-column indices of the user attribute columns (skipping bbox cols)
-fn reconstruct_schema(
+pub(crate) fn reconstruct_schema(
     arrow: &SchemaRef,
     geo_json: Option<&str>,
 ) -> Result<(CoreSchema, usize, Vec<usize>)> {
@@ -160,14 +160,25 @@ fn reconstruct_schema(
     };
 
     // Walk arrow fields → build core fields, skipping geometry + bbox cols.
+    //
+    // Bbox covering columns come in two shapes depending on the writer:
+    //   - Flat: four siblings named xmin/ymin/xmax/ymax (Float32 OR Float64).
+    //     This is what our own writer emits and what GDAL+geopandas use.
+    //   - Struct: a single column (typically named `bbox`) of
+    //     Struct{xmin,ymin,xmax,ymax} — used by DuckDB's spatial extension
+    //     and PostGIS COPY exports. Either form is valid per GeoParquet 1.1.
+    // Both are auxiliary metadata for predicate pushdown, not user attributes,
+    // so we hide them from the reconstructed schema either way.
     let mut fields = Vec::new();
     let mut attr_col_indices = Vec::new();
     for (i, f) in arrow.fields().iter().enumerate() {
         if i == geom_col_idx {
             continue;
         }
-        if BBOX_COL_NAMES.contains(&f.name().as_str()) && matches!(f.data_type(), DataType::Float64)
-        {
+        if is_flat_bbox_column(f.name(), f.data_type()) {
+            continue;
+        }
+        if is_bbox_struct_column(f.data_type()) {
             continue;
         }
         let ty = value_type_for_arrow(f.data_type())?;
@@ -192,6 +203,33 @@ fn reconstruct_schema(
 
     let schema = CoreSchema::new(fields, Some(geom_field), crs);
     Ok((schema, geom_col_idx, attr_col_indices))
+}
+
+fn is_flat_bbox_column(name: &str, dt: &DataType) -> bool {
+    BBOX_COL_NAMES.contains(&name) && matches!(dt, DataType::Float32 | DataType::Float64)
+}
+
+/// True for an Arrow Struct that exposes (xmin, ymin, xmax, ymax) sub-fields
+/// of any float width. The struct's outer name varies by writer (`bbox` for
+/// DuckDB, sometimes `bounds` or arbitrary) so we identify by shape, not
+/// name — false-positives on a user-named bbox-shaped struct are vanishingly
+/// rare in real schemas.
+fn is_bbox_struct_column(dt: &DataType) -> bool {
+    let DataType::Struct(children) = dt else {
+        return false;
+    };
+    if children.len() != 4 {
+        return false;
+    }
+    let names: std::collections::HashSet<&str> =
+        children.iter().map(|c| c.name().as_str()).collect();
+    let required = ["xmin", "ymin", "xmax", "ymax"];
+    if !required.iter().all(|r| names.contains(r)) {
+        return false;
+    }
+    children
+        .iter()
+        .all(|c| matches!(c.data_type(), DataType::Float32 | DataType::Float64))
 }
 
 /// Best-effort: look for `"geometry_types":["..."]` and take the first one.
@@ -291,7 +329,7 @@ impl Iterator for FeatureReadIter {
     }
 }
 
-fn decode_row(
+pub(crate) fn decode_row(
     batch: &RecordBatch,
     row: usize,
     geom_col_idx: usize,

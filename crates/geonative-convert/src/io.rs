@@ -56,9 +56,17 @@ impl Format {
         let ext = path
             .extension()
             .and_then(|s| s.to_str())
-            .map(str::to_ascii_lowercase)
             .ok_or_else(|| ConvertError::UnknownFormat(path.display().to_string()))?;
-        match ext.as_str() {
+        Self::from_extension(ext)
+            .map_err(|_| ConvertError::UnknownFormat(path.display().to_string()))
+    }
+
+    /// Resolve `Format` from a bare extension (no leading dot). Used when
+    /// the source lives in an object store and we only have the object
+    /// `Path` to read the extension off — `Path::from_path` won't work
+    /// because object_store paths aren't filesystem paths.
+    pub fn from_extension(ext: &str) -> Result<Self> {
+        match ext.to_ascii_lowercase().as_str() {
             "gdb" => Ok(Self::FileGdb),
             "shp" => Ok(Self::Shapefile),
             "parquet" => Ok(Self::GeoParquet),
@@ -68,7 +76,7 @@ impl Format {
             "png" => Ok(Self::Png),
             other => Err(ConvertError::UnsupportedFormat {
                 ext: other.to_string(),
-                path: path.display().to_string(),
+                path: format!("<{ext}>"),
                 supported: ".gdb, .shp, .parquet, .geojson, .tif, .cog, .jpg, .png",
             }),
         }
@@ -228,7 +236,11 @@ impl Source {
                 Ok(())
             }
             Source::GeoJson(r) => {
-                for feat in r.into_features() {
+                for (i, feat) in r.into_features().enumerate() {
+                    let feat = feat.map_err(|e| ConvertError::DecodeRow {
+                        row: i as u64,
+                        source: Box::new(ConvertError::GeoJson(e)),
+                    })?;
                     on_each(feat)?;
                 }
                 Ok(())
@@ -258,6 +270,13 @@ pub struct SinkOptions {
     pub batch_size: usize,
     pub hilbert_sort: bool,
     pub add_bbox_columns: bool,
+    /// Forwarded to
+    /// [`geonative_geoparquet::WriterOptions::hilbert_memory_budget_bytes`].
+    /// Bounds peak RAM when `hilbert_sort` is enabled so heavy-geometry
+    /// inputs don't OOM-kill the worker; the writer returns a clean
+    /// error before crossing this. Default 512 MiB; lower it for small
+    /// k8s pods, raise it on bare metal.
+    pub hilbert_memory_budget_bytes: usize,
 }
 
 impl Default for SinkOptions {
@@ -266,6 +285,7 @@ impl Default for SinkOptions {
             batch_size: 10_000,
             hilbert_sort: false,
             add_bbox_columns: true,
+            hilbert_memory_budget_bytes: 512 * 1024 * 1024,
         }
     }
 }
@@ -279,6 +299,7 @@ impl Sink {
                     batch_size: opts.batch_size,
                     add_bbox_columns: opts.add_bbox_columns,
                     hilbert_sort: opts.hilbert_sort,
+                    hilbert_memory_budget_bytes: opts.hilbert_memory_budget_bytes,
                     ..WriterOptions::default()
                 };
                 let w = GeoParquetWriter::create(file, schema, writer_opts)?;

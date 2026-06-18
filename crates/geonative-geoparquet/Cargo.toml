@@ -19,7 +19,28 @@ arrow = "58.3.0"
 parquet = { version = "58.3.0", default-features = false, features = ["arrow", "zstd"] }
 thiserror = "2"
 
+# Optional async / object-store stack (S3, Azure Blob, GCS, R2, local-fs, HTTP).
+# Enabled via `s3` feature; sync local-file workflows have zero overhead from it.
+tokio = { version = "1", optional = true, features = ["rt", "io-util", "macros"] }
+object_store = { version = "0.13", optional = true, features = ["aws"] }
+futures = { version = "0.3", optional = true }
+bytes = { version = "1", optional = true }
+async-trait = { version = "0.1", optional = true }
+
+[features]
+default = []
+# Adds async read/write paths that operate on any `object_store::ObjectStore`
+# (S3 / Azure / GCS / R2 / local-fs / HTTP). Range-read footers, fetch
+# per-row-group byte ranges, multipart-upload writes — never materialise
+# the whole file. Pulls in tokio + the object_store crate stack.
+s3 = ["dep:tokio", "dep:object_store", "dep:futures", "dep:bytes", "dep:async-trait", "parquet/async", "parquet/object_store"]
+
 [dev-dependencies]
 geonative-filegdb = { workspace = true }
 tempfile = "3"
 bytes = "1"
+# Async test infra. Only pulled in for `cargo test --features s3`; doesn't
+# affect default-feature builds.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "macros", "fs"] }
+object_store = { version = "0.13", features = ["aws"] }
+futures = "0.3"

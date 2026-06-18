@@ -44,6 +44,8 @@ pub mod filter;
 pub mod inspect;
 pub mod io;
 pub mod metadata;
+#[cfg(feature = "s3")]
+pub mod object;
 pub mod raster;
 
 pub use convert::{convert, reproject, ConvertOptions, ConvertStats};
@@ -54,6 +56,8 @@ pub use inspect::{
 };
 pub use io::{Format, Modality, Sink, SinkOptions, Source};
 pub use metadata::{build as metadata, default_sidecar_path, Sidecar};
+#[cfg(feature = "s3")]
+pub use object::{convert_async, AsyncConvertOptions, DataLocation};
 pub use raster::{
     convert_raster, RasterConvertOptions, RasterConvertStats, RasterSink, RasterSinkOptions,
     RasterSource,

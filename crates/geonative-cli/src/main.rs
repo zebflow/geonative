@@ -194,6 +194,7 @@ fn run_convert(args: ConvertArgs) -> Result<(), String> {
             batch_size: args.batch_size,
             add_bbox_columns: !args.no_bbox_columns,
             hilbert_sort: args.hilbert,
+            ..SinkOptions::default()
         },
         to_crs,
         progress: Some(Arc::new(move |written, expected| {
@@ -275,6 +276,7 @@ fn run_filter_bbox(args: FilterBboxArgs) -> Result<(), String> {
             batch_size: args.batch_size,
             add_bbox_columns: true,
             hilbert_sort: false,
+            ..SinkOptions::default()
         },
     )
     .map_err(|e| e.to_string())?;
@@ -314,6 +316,7 @@ fn run_reproject(args: ReprojectArgs) -> Result<(), String> {
             batch_size: args.batch_size,
             add_bbox_columns: true,
             hilbert_sort: false,
+            ..SinkOptions::default()
         },
         to_crs: Some(target),
         progress: None,

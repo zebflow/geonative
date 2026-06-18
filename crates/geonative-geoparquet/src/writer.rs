@@ -22,7 +22,7 @@ use parquet::file::properties::WriterProperties;
 use geonative_utils::index::{hilbert_distance_for, union_bbox};
 
 use crate::builder::RecordBatchBuilder;
-use crate::error::Result;
+use crate::error::{GeoParquetError, Result};
 use crate::meta::{build_geo_metadata_json, GeoMetadataInput};
 use crate::schema::{map_schema, MappedSchema, SchemaMapOptions};
 
@@ -44,9 +44,22 @@ pub struct WriterOptions {
     /// group) highly selective for spatial predicates — typical query speeds
     /// up by ~10x for bbox-filtered reads on disk-resident data.
     ///
-    /// Trade-off: peak memory is proportional to the dataset size. Use only
-    /// when the data fits comfortably in RAM. Disabled by default.
+    /// Trade-off: peak memory is proportional to the dataset size — see
+    /// [`hilbert_memory_budget_bytes`](Self::hilbert_memory_budget_bytes)
+    /// for the hard cap that prevents OOM.
     pub hilbert_sort: bool,
+    /// Cap on bytes buffered for `hilbert_sort`. When the next
+    /// [`GeoParquetWriter::write`] call would push the buffered estimate
+    /// over this limit, the writer returns
+    /// [`crate::GeoParquetError::HilbertBudgetExceeded`] **instead of
+    /// being OOM-killed**. Default 512 MiB.
+    ///
+    /// Size is estimated from coord count + attribute byte size + per-
+    /// feature overhead — so heavy polygons (thousands of vertices each)
+    /// charge their real cost rather than a flat per-feature constant.
+    ///
+    /// Ignored when `hilbert_sort` is `false`.
+    pub hilbert_memory_budget_bytes: usize,
     /// If `true`, write the geometry column using whatever name the source
     /// schema declared (e.g. `"SHAPE"` from FileGDB). Default `false` —
     /// the writer canonicalises to `"geometry"`, matching the GeoParquet
@@ -63,6 +76,7 @@ impl Default for WriterOptions {
             compression: Compression::ZSTD(Default::default()),
             add_bbox_columns: true,
             hilbert_sort: false,
+            hilbert_memory_budget_bytes: 512 * 1024 * 1024, // 512 MiB
             preserve_source_geometry_name: false,
         }
     }
@@ -92,6 +106,12 @@ pub struct GeoParquetWriter<W: Write + Send> {
     /// Populated only when `hilbert_sort` is enabled; otherwise stays empty.
     hilbert_buffer: Vec<PendingFeature>,
     hilbert_enabled: bool,
+    /// Running estimate of bytes held in `hilbert_buffer`. Tracked
+    /// independently of the Vec capacity so we charge geometry vertex
+    /// density honestly (a 100k-vertex polygon is not "1 feature").
+    hilbert_buffer_bytes: usize,
+    /// Hard cap — see [`WriterOptions::hilbert_memory_budget_bytes`].
+    hilbert_memory_budget: usize,
 }
 
 impl<W: Write + Send> GeoParquetWriter<W> {
@@ -128,6 +148,8 @@ impl<W: Write + Send> GeoParquetWriter<W> {
             layer_geometry_type,
             hilbert_buffer: Vec::new(),
             hilbert_enabled: opts.hilbert_sort,
+            hilbert_buffer_bytes: 0,
+            hilbert_memory_budget: opts.hilbert_memory_budget_bytes,
         })
     }
 
@@ -135,14 +157,27 @@ impl<W: Write + Send> GeoParquetWriter<W> {
     ///
     /// When `hilbert_sort` is enabled, the feature is buffered instead of
     /// written immediately — the actual write happens on [`close`](Self::close)
-    /// after the buffer is sorted.
+    /// after the buffer is sorted. Returns
+    /// [`GeoParquetError::HilbertBudgetExceeded`] if the next buffer push
+    /// would exceed `hilbert_memory_budget_bytes`, so the caller can
+    /// retry without Hilbert (or raise the budget) instead of being
+    /// OOM-killed.
     pub fn write(&mut self, feat: &Feature) -> Result<()> {
         if self.hilbert_enabled {
+            let est = estimate_feature_bytes(feat);
+            if self.hilbert_buffer_bytes.saturating_add(est) > self.hilbert_memory_budget {
+                return Err(GeoParquetError::HilbertBudgetExceeded {
+                    budget_bytes: self.hilbert_memory_budget,
+                    used_bytes: self.hilbert_buffer_bytes,
+                    features_buffered: self.hilbert_buffer.len(),
+                });
+            }
             let bbox = feat.geometry.as_ref().and_then(|g| g.bbox());
             self.hilbert_buffer.push(PendingFeature {
                 feature: feat.clone(),
                 bbox,
             });
+            self.hilbert_buffer_bytes += est;
         } else {
             self.builder.append(feat)?;
             if self.builder.len() >= self.batch_size {
@@ -232,6 +267,36 @@ impl<W: Write + Send> GeoParquetWriter<W> {
         self.inner.close()?;
         Ok(())
     }
+}
+
+/// Rough byte-cost estimate for one `Feature` held in the Hilbert buffer.
+/// Used to bound RAM honestly: a `MultiPolygon` with 100 000 vertices
+/// costs ~100× what a `Point` does, and the budget should reflect that
+/// instead of charging both as "1 feature".
+///
+/// Breakdown:
+/// - Struct overhead for `Feature` + the bbox cache we store next to it: ~96 B
+/// - Geometry: 16 B per coord (`(f64, f64)` plus per-ring/`Vec` slack)
+/// - Each attribute: 24 B + heap bytes for variable-length values
+///
+/// This is deliberately a lower bound — Vec spare-capacity, Arc metadata
+/// in `Value::String`, and allocator overhead push real RSS higher. We
+/// pad by `+ 64` per feature so the cap kicks in before genuine RSS does.
+pub(crate) fn estimate_feature_bytes(feat: &Feature) -> usize {
+    use geonative_core::Value;
+    let mut bytes = std::mem::size_of::<Feature>() + 64; // base + bbox slot + slack
+    if let Some(g) = &feat.geometry {
+        // 16 B per 2D coord; ring-overhead is small vs the coord array
+        bytes += g.coord_count().saturating_mul(16) + 32;
+    }
+    for v in &feat.attributes {
+        bytes += match v {
+            Value::String(s) | Value::Xml(s) => s.len() + 24,
+            Value::Binary(b) => b.len() + 24,
+            _ => 16,
+        };
+    }
+    bytes
 }
 
 // Helper: write a Feature iterator into a fresh file at `path`. Convenience

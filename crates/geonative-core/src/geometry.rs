@@ -159,6 +159,35 @@ impl Geometry {
         }
     }
 
+    /// Total coordinate count across the geometry tree. O(N) walk.
+    ///
+    /// This is the right number to use when budgeting memory for an
+    /// operation that scales with vertex density (Hilbert sort, geometry
+    /// simplification, WKB encode). A single polygon with 100 000
+    /// vertices charges 100 000; a `MultiPolygon` of 50 such parts
+    /// charges 5 000 000 — feature *count* alone hides this asymmetry.
+    pub fn coord_count(&self) -> usize {
+        match self {
+            Geometry::Empty(_) => 0,
+            Geometry::Point(_) => 1,
+            Geometry::LineString(ls) => ls.coords.len(),
+            Geometry::Polygon(p) => {
+                p.exterior.coords.len()
+                    + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
+            }
+            Geometry::MultiPoint(v) => v.len(),
+            Geometry::MultiLineString(v) => v.iter().map(|ls| ls.coords.len()).sum(),
+            Geometry::MultiPolygon(v) => v
+                .iter()
+                .map(|p| {
+                    p.exterior.coords.len()
+                        + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
+                })
+                .sum(),
+            Geometry::GeometryCollection(v) => v.iter().map(Geometry::coord_count).sum(),
+        }
+    }
+
     /// True if any coordinate in the tree carries a Z ordinate.
     pub fn has_z(&self) -> bool {
         match self {

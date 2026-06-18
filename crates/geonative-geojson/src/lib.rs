@@ -28,9 +28,12 @@
 //!   v0.2 will add an opt-in `--preserve-z` switch.
 //! - **Foreign members** (`bbox`, custom top-level keys) are read but not
 //!   round-tripped on write — only spec-defined fields are emitted.
-//! - **Streaming reader** — v0.1 loads everything into memory. A
-//!   `serde_json::StreamDeserializer`-based streaming reader is on the
-//!   roadmap for very large `.geojson.gz` feeds.
+//! - **Streaming reader (v0.4)** — `GeoJsonReader::open(path)` now scans
+//!   the file in two streaming passes (schema inference + feature yield)
+//!   instead of materialising the whole JSON tree. Peak RAM is bounded
+//!   to ~one feature regardless of file size; the previous in-memory
+//!   path (`from_bytes` / `from_value`) is still available for callers
+//!   who already have the bytes and want the eager `features()` slice.
 //!
 //! ## Usage
 //!
@@ -50,6 +53,7 @@ pub mod error;
 pub mod geometry;
 pub mod properties;
 pub mod reader;
+pub(crate) mod scanner;
 pub mod writer;
 
 pub use error::{GeoJsonError, Result};
