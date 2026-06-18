@@ -124,17 +124,17 @@ jobs:
       # added it as a dep in v0.3.0 for the raster::warp module. Publish proj
       # FIRST so processing's manifest can resolve `^0.3.0` against the
       # crates.io index.
-      - run: /tmp/pub.sh geonative-proj --new
+      - run: /tmp/pub.sh geonative-proj
       - run: /tmp/pub.sh geonative-processing
 
       # Layer 3: depend on layer 2
       - run: /tmp/pub.sh geonative-geoparquet
-      - run: /tmp/pub.sh geonative-mvt --new
-      - run: /tmp/pub.sh geonative-geotiff --new
-      - run: /tmp/pub.sh geonative-image --new
+      - run: /tmp/pub.sh geonative-mvt
+      - run: /tmp/pub.sh geonative-geotiff
+      - run: /tmp/pub.sh geonative-image
 
       # Layer 4: orchestration — depends on every format crate
-      - run: /tmp/pub.sh geonative-convert --new
+      - run: /tmp/pub.sh geonative-convert
 
       # Layer 5: binary
       - run: /tmp/pub.sh geonative-cli
