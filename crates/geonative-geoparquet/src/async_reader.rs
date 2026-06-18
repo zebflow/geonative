@@ -134,8 +134,12 @@ pub struct AsyncFeatureStream {
 impl AsyncFeatureStream {
     fn decode_batch(&mut self, batch: RecordBatch) {
         for row in 0..batch.num_rows() {
-            self.buffered
-                .push_back(decode_row(&batch, row, self.geom_col_idx, &self.attr_col_indices));
+            self.buffered.push_back(decode_row(
+                &batch,
+                row,
+                self.geom_col_idx,
+                &self.attr_col_indices,
+            ));
         }
     }
 }
@@ -158,7 +162,9 @@ impl Stream for AsyncFeatureStream {
                     self.decode_batch(batch);
                     // Loop to drain (or pull next if batch was empty).
                 }
-                Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(GeoParquetError::Parquet(e)))),
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(GeoParquetError::Parquet(e))))
+                }
             }
         }
     }

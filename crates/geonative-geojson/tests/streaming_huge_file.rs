@@ -22,7 +22,8 @@ use geonative_geojson::GeoJsonReader;
 fn synth_geojson(path: &std::path::Path, n: usize) -> usize {
     use std::io::Write;
     let mut file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
-    file.write_all(b"{\"type\":\"FeatureCollection\",\"features\":[").unwrap();
+    file.write_all(b"{\"type\":\"FeatureCollection\",\"features\":[")
+        .unwrap();
     for i in 0..n {
         if i > 0 {
             file.write_all(b",").unwrap();
@@ -79,10 +80,7 @@ fn streams_large_synthetic_geojson_without_loading_features_vec() {
     for (i, feat) in r.into_features().enumerate() {
         let feat = feat.expect("decode");
         if i == 0 {
-            first_was_polygon = matches!(
-                feat.geometry,
-                Some(geonative_core::Geometry::Polygon(_))
-            );
+            first_was_polygon = matches!(feat.geometry, Some(geonative_core::Geometry::Polygon(_)));
             assert_eq!(feat.fid, Some(0));
         }
         count += 1;

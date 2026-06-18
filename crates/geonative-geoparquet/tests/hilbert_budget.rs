@@ -101,7 +101,8 @@ fn small_dataset_under_budget_still_completes() {
                 Some(heavy_polygon(500, i as f64 * 0.01)),
                 vec![Value::Int32(i + 1)],
             );
-            w.write(&feat).expect("each write should succeed under budget");
+            w.write(&feat)
+                .expect("each write should succeed under budget");
         }
         w.close().expect("close should succeed");
     }
@@ -129,7 +130,8 @@ fn non_hilbert_path_ignores_budget() {
                 Some(heavy_polygon(500, i as f64 * 0.01)),
                 vec![Value::Int32(i + 1)],
             );
-            w.write(&feat).expect("streaming path should ignore the budget");
+            w.write(&feat)
+                .expect("streaming path should ignore the budget");
         }
         w.close().unwrap();
     }

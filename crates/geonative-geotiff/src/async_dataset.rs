@@ -80,9 +80,10 @@ impl AsyncCog {
     /// - Possibly 1+ extension GETs if a tag's out-of-line values lie
     ///   beyond the initial prefix
     pub async fn open(store: Arc<dyn ObjectStore>, path: OsPath) -> Result<Self> {
-        let meta = store.head(&path).await.map_err(|e| {
-            GtiffError::malformed(format!("object_store head: {e}"))
-        })?;
+        let meta = store
+            .head(&path)
+            .await
+            .map_err(|e| GtiffError::malformed(format!("object_store head: {e}")))?;
         let file_size: u64 = meta.size;
 
         // Initial fetch.
@@ -109,8 +110,7 @@ impl AsyncCog {
 
             // Compute the furthest byte any out-of-line tag in this IFD
             // points to, and extend if needed before doing tag reads.
-            if let Some(max_tag_end) =
-                max_out_of_line_end(&ifd, header.big_tiff, header.byte_order)
+            if let Some(max_tag_end) = max_out_of_line_end(&ifd, header.big_tiff, header.byte_order)
             {
                 ensure_prefix(&store, &path, &mut bytes, max_tag_end, file_size).await?;
             }
@@ -268,11 +268,7 @@ async fn ensure_prefix(
 /// Maximum file offset reached by any out-of-line tag value in `ifd`, or
 /// `None` if every value fits inline. Used to decide whether we need to
 /// extend the metadata buffer before parsing tags.
-fn max_out_of_line_end(
-    ifd: &Ifd,
-    big_tiff: bool,
-    order: crate::format::ByteOrder,
-) -> Option<u64> {
+fn max_out_of_line_end(ifd: &Ifd, big_tiff: bool, order: crate::format::ByteOrder) -> Option<u64> {
     let inline_cap: u64 = if big_tiff { 8 } else { 4 };
     let mut max_end: Option<u64> = None;
     for entry in &ifd.entries {

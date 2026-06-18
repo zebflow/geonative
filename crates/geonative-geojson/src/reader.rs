@@ -37,7 +37,7 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::error::{GeoJsonError, Result};
 use crate::geometry::from_json as geom_from_json;
-use crate::properties::{FieldsAccumulator, json_to_value};
+use crate::properties::{json_to_value, FieldsAccumulator};
 use crate::scanner;
 
 #[derive(Debug)]
@@ -231,19 +231,17 @@ impl Iterator for FeatureIter {
                 Some(Err(err))
             }
             IterInner::Eager(iter) => iter.next().map(Ok),
-            IterInner::Streaming { reader, schema } => {
-                match scanner::next_feature_value(reader) {
-                    Err(e) => {
-                        self.inner = IterInner::Done;
-                        Some(Err(e))
-                    }
-                    Ok(None) => {
-                        self.inner = IterInner::Done;
-                        None
-                    }
-                    Ok(Some(v)) => Some(build_feature_from_value(&v, schema)),
+            IterInner::Streaming { reader, schema } => match scanner::next_feature_value(reader) {
+                Err(e) => {
+                    self.inner = IterInner::Done;
+                    Some(Err(e))
                 }
-            }
+                Ok(None) => {
+                    self.inner = IterInner::Done;
+                    None
+                }
+                Ok(Some(v)) => Some(build_feature_from_value(&v, schema)),
+            },
         }
     }
 }

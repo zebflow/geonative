@@ -172,16 +172,14 @@ impl Geometry {
             Geometry::Point(_) => 1,
             Geometry::LineString(ls) => ls.coords.len(),
             Geometry::Polygon(p) => {
-                p.exterior.coords.len()
-                    + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
+                p.exterior.coords.len() + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
             }
             Geometry::MultiPoint(v) => v.len(),
             Geometry::MultiLineString(v) => v.iter().map(|ls| ls.coords.len()).sum(),
             Geometry::MultiPolygon(v) => v
                 .iter()
                 .map(|p| {
-                    p.exterior.coords.len()
-                        + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
+                    p.exterior.coords.len() + p.holes.iter().map(|h| h.coords.len()).sum::<usize>()
                 })
                 .sum(),
             Geometry::GeometryCollection(v) => v.iter().map(Geometry::coord_count).sum(),

@@ -62,10 +62,7 @@ impl PmTilesAsyncReader {
     /// Open the PMTiles archive at `path`. Issues 2 GETs (header + root dir).
     pub async fn open(store: Arc<dyn ObjectStore>, path: OsPath) -> Result<Self> {
         // 1. Header (first 127 bytes).
-        let header_bytes = store
-            .get_range(&path, 0..HEADER_LEN as u64)
-            .await?
-            .to_vec();
+        let header_bytes = store.get_range(&path, 0..HEADER_LEN as u64).await?.to_vec();
         let header = Header::parse(&header_bytes)?;
 
         // 2. Root directory.

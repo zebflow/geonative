@@ -93,7 +93,8 @@ impl GeoParquetAsyncWriter {
             .set_max_row_group_row_count(Some(opts.batch_size))
             .build();
 
-        let inner = AsyncArrowWriter::try_new(buf_writer, mapped.arrow.clone(), Some(writer_props))?;
+        let inner =
+            AsyncArrowWriter::try_new(buf_writer, mapped.arrow.clone(), Some(writer_props))?;
         let builder = RecordBatchBuilder::new(&mapped, schema)?;
 
         let layer_geometry_type = schema

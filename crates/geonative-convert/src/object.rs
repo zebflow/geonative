@@ -112,8 +112,12 @@ pub async fn convert_async(
     // Both local → just delegate to sync via spawn_blocking so callers
     // don't have to maintain a parallel API to handle this case.
     if !source.is_remote() && !sink.is_remote() {
-        let DataLocation::Local(src_path) = source else { unreachable!() };
-        let DataLocation::Local(dst_path) = sink else { unreachable!() };
+        let DataLocation::Local(src_path) = source else {
+            unreachable!()
+        };
+        let DataLocation::Local(dst_path) = sink else {
+            unreachable!()
+        };
         return delegate_sync(src_path, dst_path, opts).await;
     }
 
@@ -233,9 +237,13 @@ async fn s3_to_s3(
     };
     let out_schema = maybe_retarget_crs(schema, &opts.to_crs);
 
-    let mut writer =
-        GeoParquetAsyncWriter::create(dst_store, dst_path, &out_schema, writer_opts_from(&opts.sink))
-            .await?;
+    let mut writer = GeoParquetAsyncWriter::create(
+        dst_store,
+        dst_path,
+        &out_schema,
+        writer_opts_from(&opts.sink),
+    )
+    .await?;
 
     let mut stream = reader.into_features();
     let start = Instant::now();
@@ -307,9 +315,13 @@ async fn local_to_s3(
     };
     let out_schema = maybe_retarget_crs(schema, &opts.to_crs);
 
-    let mut writer =
-        GeoParquetAsyncWriter::create(dst_store, dst_path, &out_schema, writer_opts_from(&opts.sink))
-            .await?;
+    let mut writer = GeoParquetAsyncWriter::create(
+        dst_store,
+        dst_path,
+        &out_schema,
+        writer_opts_from(&opts.sink),
+    )
+    .await?;
 
     let start = Instant::now();
     let mut count: u64 = 0;

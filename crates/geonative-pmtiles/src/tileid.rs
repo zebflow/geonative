@@ -178,8 +178,8 @@ mod tests {
         let mut spread = 0i64;
         for dx in -2i32..=2 {
             for dy in -2i32..=2 {
-                let id = coords_to_tile_id(z, (cx as i32 + dx) as u32, (cy as i32 + dy) as u32)
-                    .unwrap();
+                let id =
+                    coords_to_tile_id(z, (cx as i32 + dx) as u32, (cy as i32 + dy) as u32).unwrap();
                 spread = spread.max((id as i64 - center_id as i64).abs());
             }
         }

@@ -144,7 +144,5 @@ async fn async_cog_roundtrip_against_minio() {
 
     let _ = store.delete(&s3_path).await;
 
-    eprintln!(
-        "async cog roundtrip ok: uploaded {bytes_len} B, decoded 4 tiles via range-read"
-    );
+    eprintln!("async cog roundtrip ok: uploaded {bytes_len} B, decoded 4 tiles via range-read");
 }

@@ -69,7 +69,10 @@ fn sample_features(n: usize) -> Vec<Feature> {
                     Coord::xy(i as f64, i as f64),
                     Coord::xy((i + 1) as f64, (i + 1) as f64),
                 ]))),
-                vec![Value::Int32(i as i32 + 1), Value::String(format!("row-{i}"))],
+                vec![
+                    Value::Int32(i as i32 + 1),
+                    Value::String(format!("row-{i}")),
+                ],
             )
         })
         .collect()

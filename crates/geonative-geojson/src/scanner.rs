@@ -41,8 +41,7 @@ pub(crate) enum TopLevel<R: BufRead> {
 /// array so [`next_feature_value`] can stream from there.
 pub(crate) fn open_top_level<R: BufRead>(mut reader: R) -> Result<TopLevel<R>> {
     skip_ws(&mut reader)?;
-    let first = peek_byte(&mut reader)?
-        .ok_or_else(|| GeoJsonError::malformed("empty input"))?;
+    let first = peek_byte(&mut reader)?.ok_or_else(|| GeoJsonError::malformed("empty input"))?;
     if first != b'{' {
         return Err(GeoJsonError::malformed(format!(
             "GeoJSON root must be a JSON object (got first byte {first:#x})"
@@ -81,8 +80,8 @@ pub(crate) fn open_top_level<R: BufRead>(mut reader: R) -> Result<TopLevel<R>> {
 
         skip_ws(&mut reader)?;
         // Expect ':'
-        let colon = peek_byte(&mut reader)?
-            .ok_or_else(|| GeoJsonError::malformed("EOF after key"))?;
+        let colon =
+            peek_byte(&mut reader)?.ok_or_else(|| GeoJsonError::malformed("EOF after key"))?;
         if colon != b':' {
             return Err(GeoJsonError::malformed(format!(
                 "expected ':' after key '{key}', got byte {colon:#x}"
@@ -109,8 +108,9 @@ pub(crate) fn open_top_level<R: BufRead>(mut reader: R) -> Result<TopLevel<R>> {
         }
 
         // Other top-level key — slurp its value and remember.
-        let val_bytes = read_one_balanced_value(&mut reader)?
-            .ok_or_else(|| GeoJsonError::malformed(format!("EOF while reading value for key '{key}'")))?;
+        let val_bytes = read_one_balanced_value(&mut reader)?.ok_or_else(|| {
+            GeoJsonError::malformed(format!("EOF while reading value for key '{key}'"))
+        })?;
         let val: Json = serde_json::from_slice(&val_bytes)?;
         if key == "type" {
             declared_type = val.as_str().map(str::to_string);
@@ -126,8 +126,7 @@ fn wrap_bare<R: BufRead>(
     declared_type: Option<&str>,
     keys: JsonMap<String, Json>,
 ) -> Result<TopLevel<R>> {
-    let ty = declared_type
-        .ok_or_else(|| GeoJsonError::malformed("GeoJSON root missing 'type'"))?;
+    let ty = declared_type.ok_or_else(|| GeoJsonError::malformed("GeoJSON root missing 'type'"))?;
     let obj = Json::Object(keys);
     match ty {
         "Feature" => Ok(TopLevel::BareFeature(obj)),
@@ -315,7 +314,6 @@ pub(crate) fn buf_reader_for_file(path: &std::path::Path) -> Result<BufReader<st
     Ok(BufReader::with_capacity(64 * 1024, file))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,10 +328,17 @@ mod tests {
             {"type":"Feature","geometry":{"type":"Point","coordinates":[1,2]},"properties":{"a":1}},
             {"type":"Feature","geometry":{"type":"Point","coordinates":[3,4]},"properties":{"a":2}}
         ]}"#;
-        let TopLevel::Collection { mut reader, header_keys } = open_str(s) else {
+        let TopLevel::Collection {
+            mut reader,
+            header_keys,
+        } = open_str(s)
+        else {
             panic!("expected Collection");
         };
-        assert_eq!(header_keys.get("type").and_then(Json::as_str), Some("FeatureCollection"));
+        assert_eq!(
+            header_keys.get("type").and_then(Json::as_str),
+            Some("FeatureCollection")
+        );
         let f1 = next_feature_value(&mut reader).unwrap().unwrap();
         let f2 = next_feature_value(&mut reader).unwrap().unwrap();
         assert!(next_feature_value(&mut reader).unwrap().is_none());
@@ -349,7 +354,11 @@ mod tests {
           "bbox":[0,0,1,1],
           "features":[{"type":"Feature","geometry":null,"properties":{}}]
         }"#;
-        let TopLevel::Collection { mut reader, header_keys } = open_str(s) else {
+        let TopLevel::Collection {
+            mut reader,
+            header_keys,
+        } = open_str(s)
+        else {
             panic!("expected Collection");
         };
         assert!(header_keys.contains_key("crs"));
@@ -364,7 +373,9 @@ mod tests {
             {"type":"Feature","geometry":null,"properties":{"raw":"value with }]{ and \"quotes\" inside"}},
             {"type":"Feature","geometry":null,"properties":{}}
         ]}"#;
-        let TopLevel::Collection { mut reader, .. } = open_str(s) else { panic!() };
+        let TopLevel::Collection { mut reader, .. } = open_str(s) else {
+            panic!()
+        };
         let f1 = next_feature_value(&mut reader).unwrap().unwrap();
         let f2 = next_feature_value(&mut reader).unwrap().unwrap();
         assert_eq!(
@@ -378,13 +389,16 @@ mod tests {
     #[test]
     fn empty_features_array_returns_none_immediately() {
         let s = r#"{"type":"FeatureCollection","features":[]}"#;
-        let TopLevel::Collection { mut reader, .. } = open_str(s) else { panic!() };
+        let TopLevel::Collection { mut reader, .. } = open_str(s) else {
+            panic!()
+        };
         assert!(next_feature_value(&mut reader).unwrap().is_none());
     }
 
     #[test]
     fn bare_feature_is_detected() {
-        let s = r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[1,2]},"properties":{}}"#;
+        let s =
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[1,2]},"properties":{}}"#;
         match open_str(s) {
             TopLevel::BareFeature(v) => assert_eq!(v["type"], Json::from("Feature")),
             _ => panic!("expected BareFeature"),
@@ -404,7 +418,9 @@ mod tests {
     fn truncated_array_errors_cleanly() {
         let s = r#"{"type":"FeatureCollection","features":["#;
         let result = open_top_level(BufReader::new(s.as_bytes()));
-        let TopLevel::Collection { mut reader, .. } = result.unwrap() else { panic!() };
+        let TopLevel::Collection { mut reader, .. } = result.unwrap() else {
+            panic!()
+        };
         assert!(next_feature_value(&mut reader).is_err());
     }
 }

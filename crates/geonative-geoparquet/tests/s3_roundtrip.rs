@@ -83,7 +83,10 @@ fn sample_features(n: usize) -> Vec<Feature> {
                     Coord::xy(i as f64, i as f64),
                     Coord::xy((i + 1) as f64, (i + 1) as f64),
                 ]))),
-                vec![Value::Int32(i as i32 + 1), Value::String(format!("row-{i}"))],
+                vec![
+                    Value::Int32(i as i32 + 1),
+                    Value::String(format!("row-{i}")),
+                ],
             )
         })
         .collect()
@@ -172,7 +175,9 @@ async fn s3_async_reader_handles_external_fixture() {
         return;
     }
     if !std::path::Path::new(FIXTURE_PATH).exists() {
-        eprintln!("skipping s3_async_reader_handles_external_fixture: fixture missing at {FIXTURE_PATH}");
+        eprintln!(
+            "skipping s3_async_reader_handles_external_fixture: fixture missing at {FIXTURE_PATH}"
+        );
         return;
     }
 
@@ -194,7 +199,10 @@ async fn s3_async_reader_handles_external_fixture() {
         .await
         .expect("open external fixture");
     let schema_fields = reader.schema().fields.len();
-    assert!(schema_fields > 0, "fixture must declare at least 1 attribute");
+    assert!(
+        schema_fields > 0,
+        "fixture must declare at least 1 attribute"
+    );
 
     let mut stream = reader.into_features();
     let mut count = 0usize;
@@ -209,7 +217,10 @@ async fn s3_async_reader_handles_external_fixture() {
     assert!(count > 0, "external fixture decoded zero features");
     let first = first.unwrap();
     assert_eq!(first.attributes.len(), schema_fields);
-    assert!(first.geometry.is_some(), "first feature should have geometry");
+    assert!(
+        first.geometry.is_some(),
+        "first feature should have geometry"
+    );
 
     eprintln!(
         "external fixture: uploaded {bytes_len} bytes, decoded {count} features, {schema_fields} attribute fields"

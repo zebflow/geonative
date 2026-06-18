@@ -8,9 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use geonative_pmtiles::{
-    Compression, PmTilesAsyncReader, PmTilesWriter, TileType, WriterOptions,
-};
+use geonative_pmtiles::{Compression, PmTilesAsyncReader, PmTilesWriter, TileType, WriterOptions};
 use object_store::aws::AmazonS3Builder;
 use object_store::path::Path as OsPath;
 use object_store::{ObjectStore, ObjectStoreExt};

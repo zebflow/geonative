@@ -1,8 +1,6 @@
 //! Local roundtrip + leaf-split correctness for PMTiles.
 
-use geonative_pmtiles::{
-    Compression, PmTilesReader, PmTilesWriter, TileType, WriterOptions,
-};
+use geonative_pmtiles::{Compression, PmTilesReader, PmTilesWriter, TileType, WriterOptions};
 
 fn opts() -> WriterOptions {
     WriterOptions {
